@@ -1,13 +1,13 @@
 {
-  "name": "chistix.id",
-  "version": "0.1.0",
+  "name": "chistix-frontend",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma skills sync || exit 0"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -20,13 +20,11 @@
     "clsx": "^2.1.1",
     "cn": "^0.4.0",
     "embla-carousel-react": "^8.6.0",
-    "handlebars": "^4.7.10",
     "html2canvas-pro": "^2.5.2",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.52.0",
     "next": "16.3.8",
     "next-themes": "^0.4.6",
-    "nodemailer": "^10.1.1",
     "postcss": "^8.5.29",
     "qrcode.react": "^4.2.0",
     "raf": "^3.4.1",
@@ -39,16 +37,13 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@prisma/client": "6.19.3",
     "@types/node": "^20",
-    "@types/nodemailer": "^8.0.2",
     "@types/qrcode.react": "^1.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
-    "prisma": "6.19.3",
     "typescript": "^5"
   },
   "allowScripts": {

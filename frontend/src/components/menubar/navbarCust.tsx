@@ -19,7 +19,7 @@ import { authClient } from "@/lib/auth-client";
 import { SearchForm } from "../ui/searchForm";
 import { Chevron } from "../ui/chevron";
 
-export default function NavbarCust({ user }: { user: any }) {
+export default function NavbarCust({ user }: { user?: any }) {
   const [open, setOpen] = useState(false);
   const closeMenu = () => setOpen(false);
   const router = useRouter();

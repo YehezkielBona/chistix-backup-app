@@ -1,5 +1,5 @@
-import "dotenv/config"; // WAJIB di baris paling atas agar variabel .env dibaca duluan
-import { sendVerificationEmailLink } from "./src/controllers/email.controller";
+// Script untuk menguji pengiriman email SMTP dari folder backend
+import { sendVerificationEmailLink } from "../src/controllers/email.controller.js";
 
 async function runTest() {
   console.log("--> Cek EMAIL_USER:", process.env.EMAIL_USER);
@@ -7,13 +7,13 @@ async function runTest() {
 
   try {
     await sendVerificationEmailLink(
-      "aluminos09@gmail.com",
-      "Imam Test",
-      "http://localhost:3000/?verified=true"
+      process.env.EMAIL_USER || "test@example.com",
+      "Tester Chistix",
+      "http://localhost:3000/login",
     );
-    console.log("=== TES MANDIRI BERHASIL ===");
+    console.log("--> Pengiriman email tes berhasil.");
   } catch (err) {
-    console.error("=== TES MANDIRI GAGAL ===", err);
+    console.error("--> Pengiriman email tes gagal:", err);
   }
 }
 

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { User, Mail, Lock, Eye, EyeOff, Ticket } from "lucide-react";
-import { registerSchema } from "@/middlewares/auth.middleware";
+import { registerSchema } from "@/lib/validation";
 
 export default function RegisterPage() {
   const router = useRouter();

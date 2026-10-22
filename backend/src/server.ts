@@ -1,0 +1,77 @@
+// ============================================================
+// TITIK MASUK UTAMA BACKEND EXPRESS (server.ts)
+// Arsitektur: Routes -> Controllers -> Services -> Prisma (Neon PostgreSQL)
+// ============================================================
+import express from "express";
+import cors from "cors";
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./controllers/auth.controller.js";
+import { organizerEventRouter, publicEventRouter } from "./routes/event.routes.js";
+import { organizerVoucherRouter, publicVoucherRouter } from "./routes/voucher.routes.js";
+import { regionRouter, uploadRouter } from "./routes/region.routes.js";
+import { errorHandler } from "./middlewares/error.middleware.js";
+
+export const app = express();
+
+// 1. CORS: Izinkan akses dari Frontend Next.js (termasuk pengiriman cookie login)
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "http://localhost:3000",
+  process.env.BETTER_AUTH_URL || "http://localhost:3000",
+];
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Izinkan request tanpa origin (seperti proxy Next.js rewrites, Postman, curl)
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  }),
+);
+
+// 2. Better Auth Handler: WAJIB dipasang SEBELUM express.json()
+//    agar stream body login/register tidak habis dibaca duluan oleh express.json().
+app.all("/api/auth/*splat", toNodeHandler(auth));
+
+// 3. Body Parser JSON untuk semua endpoint REST lainnya
+app.use(express.json({ limit: "10mb" }));
+
+// 4. Endpoint cek kesehatan server
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "chistix-express-backend",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// 5. Pasang semua Router
+app.use("/api/organizer/events", organizerEventRouter);
+app.use("/api/events", publicEventRouter);
+app.use("/api/organizer/vouchers", organizerVoucherRouter);
+app.use("/api/vouchers", publicVoucherRouter);
+app.use("/api/regions", regionRouter);
+app.use("/api/upload", uploadRouter);
+
+// 6. Handler 404 jika endpoint tidak ditemukan
+app.use((_req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Endpoint API tidak ditemukan di server Express",
+  });
+});
+
+// 7. Global Error Handler
+app.use(errorHandler);
+
+// Jalankan server jika tidak sedang di-import sebagai Serverless Function Vercel
+if (process.env.VERCEL !== "1") {
+  const PORT = Number(process.env.PORT) || 4000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Chistix Express Backend berjalan di http://localhost:${PORT}`);
+  });
+}
+
+export default app;

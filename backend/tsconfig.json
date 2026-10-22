@@ -1,0 +1,21 @@
+{
+  // tsconfig = aturan TypeScript untuk backend.
+  "compilerOptions": {
+    "target": "ES2022",
+    // NodeNext = mode modul resmi Node.js (ESM).
+    // Konsekuensinya: import file lokal WAJIB pakai akhiran ".js",
+    // contoh: import { prisma } from "../lib/prisma.js"
+    // (walaupun file aslinya .ts — TypeScript yang menerjemahkan).
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    // Kita jalankan .ts langsung lewat "tsx", jadi tidak perlu hasil build .js
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "api/**/*.ts", "prisma/**/*.ts", "scripts/**/*.ts"]
+}

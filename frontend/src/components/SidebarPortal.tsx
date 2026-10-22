@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CATEGORIES, LOCATIONS } from '@/data/events';
 
 interface SidebarPortalProps {
@@ -19,9 +19,24 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
 
+  // Daftar provinsi dari API Emsifa (diambil lewat Backend Express: GET /api/regions/provinces)
+  const [emsifaProvinces, setEmsifaProvinces] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/regions/provinces')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data)) {
+          setEmsifaProvinces(json.data);
+        }
+      })
+      .catch(() => {
+        // Fallback ke LOCATIONS statis jika offline
+      });
+  }, []);
+
   // Helper function untuk memfilter HANYA angka (mencegah titik, koma, minus, dll)
   const handlePriceChange = (value: string, setter: (val: string) => void) => {
-    // Hapus semua karakter yang bukan angka (0-9)
     const cleanNumericValue = value.replace(/[^0-9]/g, '');
     setter(cleanNumericValue);
   };
@@ -80,7 +95,7 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
         </div>
       </div>
 
-      {/* 2. Location */}
+      {/* 2. Location (Terintegrasi API Emsifa via Express) */}
       <div className="space-y-1">
         <label className="block text-sm font-bold text-gray-800">
           Location
@@ -97,6 +112,15 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
                 {loc}
               </option>
             ))}
+            {emsifaProvinces.length > 0 && (
+              <optgroup label="Provinsi (Emsifa Indonesia)">
+                {emsifaProvinces.map((prov) => (
+                  <option key={`prov-${prov.id}`} value={prov.name}>
+                    {prov.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -106,7 +130,7 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
         </div>
       </div>
 
-      {/* 3. Price Range (Sudah Aman dari Titik / Non-Digit) */}
+      {/* 3. Price Range */}
       <div className="space-y-1.5">
         <label className="block text-sm font-bold text-gray-800">
           Price Range

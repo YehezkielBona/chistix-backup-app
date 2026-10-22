@@ -19,7 +19,11 @@ export const metadata: Metadata = {
   keywords: ["Live Concerts","Viral Events","Acara Populer di Indonesia","Seminar Premium" ]
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" className={`${inter.variable} ${inter.variable}`}>
       <body>{children}</body>
