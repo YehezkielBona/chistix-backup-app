@@ -1,0 +1,387 @@
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
+import { Search, Clock } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
+
+interface TicketItem {
+  id: string;
+  eventName: string;
+  ticketType: string;
+  qty: number;
+  dateTime: string;
+  location: string;
+  customerName?: string;
+  totalAmount?: number;
+  status?: "Done" | "Waiting Approval";
+}
+
+export default function EventsTab() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [activeDownloadId, setActiveDownloadId] = useState<string | null>(null);
+
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
+  const [pdfTicketsData, setPdfTicketsData] = useState<{
+    item: TicketItem;
+    tickets: { id: string }[];
+  } | null>(null);
+
+  const [tickets, setTickets] = useState<TicketItem[]>([]);
+
+  useEffect(() => {
+    localStorage.removeItem("chistix_my_tickets");
+    
+    const approvedTickets: TicketItem[] = [
+      {
+        id: "TIX-8891",
+        eventName: "Night Symphony: Classic Meets Rock",
+        ticketType: "Presale",
+        qty: 3,
+        dateTime: "19 Desember 2026 pukul 19:00",
+        location: "North Jakarta, Jakarta",
+        customerName: "mutiara",
+        totalAmount: 166500,
+        status: "Done",
+      },
+    ];
+
+    setTickets(approvedTickets);
+  }, []);
+
+  const filteredTickets = tickets.filter(
+    (item) =>
+      item.eventName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.ticketType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.location.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const formatRupiah = (num: number) => "Rp " + num.toLocaleString("id-ID");
+
+  const handlePrintTicket = async (item: TicketItem) => {
+    setActiveDownloadId(item.id);
+    setIsDownloading(true);
+
+    const generatedTickets = Array.from({ length: item.qty }, () => ({
+      id: Math.random().toString(36).substring(2, 10).toUpperCase(),
+    }));
+
+    setPdfTicketsData({
+      item,
+      tickets: generatedTickets,
+    });
+
+    setTimeout(async () => {
+      if (!pdfContainerRef.current) {
+        setIsDownloading(false);
+        setActiveDownloadId(null);
+        return;
+      }
+
+      try {
+        const pdf = new jsPDF("p", "mm", "a4");
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+
+        const ticketCards =
+          pdfContainerRef.current.querySelectorAll<HTMLElement>(".pdf-ticket-page");
+
+        for (let i = 0; i < ticketCards.length; i++) {
+          const card = ticketCards[i];
+
+          const canvas = await html2canvas(card, {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            ignoreElements: (el) => el.tagName === "STYLE" || el.tagName === "LINK",
+          });
+
+          const imgData = canvas.toDataURL("image/png");
+
+          const imgWidth = pdfWidth - 40;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          const xPos = (pdfWidth - imgWidth) / 2;
+          const yPos = (pdfHeight - imgHeight) / 2;
+
+          if (i > 0) {
+            pdf.addPage();
+          }
+
+          pdf.addImage(imgData, "PNG", xPos, yPos, imgWidth, imgHeight);
+        }
+
+        pdf.save(`E-Ticket-${item.eventName.replace(/\s+/g, "_")}.pdf`);
+      } catch (error) {
+        console.error("Gagal mencetak PDF:", error);
+      } finally {
+        setIsDownloading(false);
+        setActiveDownloadId(null);
+        setPdfTicketsData(null);
+      }
+    }, 300);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-neutral-900">Events</h1>
+        <p className="mt-0.5 text-xs text-neutral-500">
+          Daftar tiket resmi yang sudah disetujui organizer dan siap dicetak.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search event name, location, or ticket type..."
+            className="w-full rounded-2xl border border-neutral-200 bg-white pl-9 pr-4 py-2.5 text-xs text-neutral-800 placeholder-neutral-400 focus:border-amber-500 focus:outline-none transition-all"
+          />
+        </div>
+      </div>
+
+      <div className="w-full">
+        <table className="w-full text-left text-xs table-fixed">
+          <thead className="border-b border-neutral-100 text-neutral-400">
+            <tr>
+              <th className="pb-3 font-medium text-left w-1/4">Event Name</th>
+              <th className="pb-3 font-medium text-center px-2">Ticket Type</th>
+              <th className="pb-3 font-medium text-center px-2">Jumlah</th>
+              <th className="pb-3 font-medium text-center px-2">Date & Time</th>
+              <th className="pb-3 font-medium text-center px-2">Location</th>
+              <th className="pb-3 font-medium text-right pr-2">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-50 text-neutral-700">
+            {filteredTickets.length > 0 ? (
+              filteredTickets.map((ticket) => (
+                <tr key={ticket.id}>
+                  <td className="py-4 font-semibold text-neutral-900 pr-2 break-words text-left">
+                    {ticket.eventName}
+                  </td>
+                  <td className="py-4 text-center px-2">
+                    <span className="inline-block px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
+                      {ticket.ticketType}
+                    </span>
+                  </td>
+                  <td className="py-4 text-center px-2 font-medium text-neutral-800">
+                    {ticket.qty}x Ticket
+                  </td>
+                  <td className="py-4 text-center px-2 text-neutral-600 break-words">
+                    {ticket.dateTime}
+                  </td>
+                  <td className="py-4 text-center px-2 text-neutral-600 break-words">
+                    {ticket.location}
+                  </td>
+                  <td className="py-4 text-right">
+                    <button
+                      type="button"
+                      disabled={isDownloading && activeDownloadId === ticket.id}
+                      onClick={() => handlePrintTicket(ticket)}
+                      className="rounded-lg bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 px-3 py-1.5 text-xs font-semibold text-white transition-colors cursor-pointer active:scale-95 disabled:cursor-not-allowed inline-block"
+                    >
+                      {isDownloading && activeDownloadId === ticket.id
+                        ? "Generating..."
+                        : "Cetak Tiket"}
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-neutral-400">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <Clock className="w-8 h-8 text-neutral-300 stroke-[1.5]" />
+                    <p className="font-semibold text-neutral-600">Belum ada tiket aktif</p>
+                    <p className="text-[11px]">
+                      Tiket akan muncul di sini setelah pembayaran disetujui oleh organizer.
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* TEMPLATE PDF TERSEMBUNYI */}
+      {pdfTicketsData && (
+        <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }}>
+          <div
+            ref={pdfContainerRef}
+            style={{ display: "flex", flexDirection: "column", gap: "40px" }}
+          >
+            {pdfTicketsData.tickets.map((t) => (
+              <div
+                key={t.id}
+                className="pdf-ticket-page"
+                style={{
+                  width: "420px",
+                  backgroundColor: "#ffffff",
+                  border: "2px solid #1e293b",
+                  borderRadius: "20px",
+                  padding: "32px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  color: "#0f172a",
+                  fontFamily: "Arial, sans-serif",
+                  boxSizing: "border-box",
+                }}
+              >
+                <div style={{ textAlign: "center", marginBottom: "24px", width: "100%" }}>
+                  <h1
+                    style={{
+                      fontSize: "24px",
+                      fontWeight: "800",
+                      letterSpacing: "1px",
+                      margin: "0 0 8px 0",
+                      color: "#000000",
+                    }}
+                  >
+                    E-TICKET
+                  </h1>
+                  <h2
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: "700",
+                      margin: "0 0 6px 0",
+                      color: "#000000",
+                    }}
+                  >
+                    The bill has been paid
+                  </h2>
+                  <p style={{ fontSize: "11px", color: "#475569", margin: 0 }}>
+                    Valid ticket. Guest may enter.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "14px",
+                    margin: "10px 0",
+                    fontSize: "12px",
+                    fontWeight: "500",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#475569" }}>Events</span>
+                    <span
+                      style={{
+                        fontWeight: "700",
+                        textAlign: "right",
+                        maxWidth: "220px",
+                        color: "#000000",
+                      }}
+                    >
+                      {pdfTicketsData.item.eventName}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#475569" }}>Customer</span>
+                    <span style={{ fontWeight: "700", color: "#000000" }}>
+                      {pdfTicketsData.item.customerName || "mutiara"}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#475569" }}>Ticket Type</span>
+                    <span style={{ fontWeight: "700", color: "#000000" }}>
+                      {pdfTicketsData.item.ticketType}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#475569" }}>Date & Time</span>
+                    <span style={{ fontWeight: "700", color: "#000000" }}>
+                      {pdfTicketsData.item.dateTime}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#475569" }}>Location</span>
+                    <span style={{ fontWeight: "700", color: "#000000" }}>
+                      {pdfTicketsData.item.location}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      paddingTop: "10px",
+                      borderTop: "1px solid #cbd5e1",
+                      display: "flex",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span style={{ color: "#475569" }}>Total Amount</span>
+                    <span style={{ fontWeight: "700", color: "#000000" }}>
+                      {formatRupiah(pdfTicketsData.item.totalAmount || 166500)}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#475569" }}>Ticket ID</span>
+                    <span
+                      style={{
+                        fontFamily: "monospace",
+                        fontWeight: "700",
+                        fontSize: "13px",
+                        letterSpacing: "1px",
+                        color: "#000000",
+                      }}
+                    >
+                      {t.id}
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "24px",
+                    marginBottom: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                  }}
+                >
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=TIX-${t.id}`}
+                    alt="QR Code"
+                    width={160}
+                    height={160}
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "12px",
+                      padding: "8px",
+                      background: "#ffffff",
+                    }}
+                    crossOrigin="anonymous"
+                  />
+                  <p
+                    style={{
+                      fontSize: "10px",
+                      color: "#475569",
+                      marginTop: "16px",
+                      textAlign: "center",
+                      margin: "0",
+                    }}
+                  >
+                    Tunjukkan QR Code ini di pintu masuk acara
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
