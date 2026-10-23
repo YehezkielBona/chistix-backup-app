@@ -83,9 +83,28 @@ export default function EditEventPage({
   const [isUploadingCovers, setIsUploadingCovers] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(true);
 
+  // State untuk file lokal & preview sebelum di-upload saat Save Changes
+  const [thumbFile, setThumbFile] = useState<File | null>(null);
+  const [thumbPreview, setThumbPreview] = useState<string>("");
+
+  const [coverFilesList, setCoverFilesList] = useState<File[]>([]);
+  const [coverPreviews, setCoverPreviews] = useState<string[]>([]);
+
   const allocatedQuota =
     vipQuota + regularQuota + (form.presale?.enabled ? presaleQuota : 0);
   const remainingQuota = totalTicket - allocatedQuota;
+  const isQuotaExceeded =
+  totalTicket <= 0 ||
+  vipQuota > totalTicket ||
+  regularQuota > totalTicket ||
+  (Boolean(form.presale?.enabled) && presaleQuota > totalTicket) ||
+  allocatedQuota > totalTicket ||
+  remainingQuota !== 0;
+
+  // Rumus Matematika H-1: kurangi 24 jam x 60 menit x 60 detik x 1000 ms dari startDate
+  const salesCloseDate = startDate
+    ? new Date(new Date(startDate).getTime() - 24 * 60 * 60 * 1000)
+    : null;
 
   const handleChange = (field: keyof EventFormData, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -197,36 +216,23 @@ export default function EditEventPage({
     }
   }, [eventId]);
 
-  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      setIsUploadingThumb(true);
-      const url = await uploadImageToCloudinary(file, "chistix/thumbnails");
-      handleChange("thumbnailImage", url);
-    } catch (err: any) {
-      alert("Gagal upload thumbnail ke Cloudinary: " + err.message);
-    } finally {
-      setIsUploadingThumb(false);
-    }
+
+    setThumbFile(file);
+    setThumbPreview(URL.createObjectURL(file));
+    e.target.value = "";
   };
 
-  const handleCoversUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoversSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    try {
-      setIsUploadingCovers(true);
-      const urls: string[] = [];
-      for (const f of files) {
-        const u = await uploadImageToCloudinary(f, "chistix/covers");
-        urls.push(u);
-      }
-      handleChange("coverImages", urls);
-    } catch (err: any) {
-      alert("Gagal upload cover ke Cloudinary: " + err.message);
-    } finally {
-      setIsUploadingCovers(false);
-    }
+
+    setCoverFilesList(files);
+    const previews = files.map((f) => URL.createObjectURL(f));
+    setCoverPreviews(previews);
+    e.target.value = "";
   };
 
   // 4. Submit Perubahan via HTTP PUT ke Express
@@ -240,6 +246,11 @@ export default function EditEventPage({
       return;
     }
 
+    const hasThumbnail = Boolean(form.thumbnailImage || thumbFile);
+    const hasCovers = Boolean(
+      (form.coverImages && form.coverImages.length > 0) || coverFilesList.length > 0,
+    );
+
     if (
       !form.title ||
       !startDate ||
@@ -247,12 +258,14 @@ export default function EditEventPage({
       !form.description ||
       !form.province ||
       !form.city ||
-      !form.venueDetail
+      !form.venueDetail ||
+      !hasThumbnail ||
+      !hasCovers
     ) {
       setModalFeedback({
         isOpen: true,
         type: "ERROR",
-        message: "Harap lengkapi semua field yang wajib diisi!",
+        message: "Harap lengkapi semua field yang wajib diisi, termasuk Thumbnail dan minimal 1 Cover Image!",
       });
       return;
     }
@@ -275,7 +288,65 @@ export default function EditEventPage({
       return;
     }
 
+    if (form.presale?.enabled && presaleQuota > 0) {
+      if (!form.presale.startDate || !form.presale.endDate) {
+        setModalFeedback({
+          isOpen: true,
+          type: "ERROR",
+          message: "Harap tentukan tanggal mulai dan akhir periode Presale!",
+        });
+        return;
+      }
+      if (new Date(form.presale.endDate) <= new Date(form.presale.startDate)) {
+        setModalFeedback({
+          isOpen: true,
+          type: "ERROR",
+          message: "Tanggal berakhir Presale harus setelah tanggal mulai Presale!",
+        });
+        return;
+      }
+      if (salesCloseDate && new Date(form.presale.endDate) > salesCloseDate) {
+        setModalFeedback({
+          isOpen: true,
+          type: "ERROR",
+          message: `Periode Presale tidak boleh melebihi batas H-1 acara (${salesCloseDate.toLocaleDateString("id-ID")}) agar ada waktu untuk penjualan tiket VIP & Regular!`,
+        });
+        return;
+      }
+    }
+
     try {
+      let finalThumbUrl = form.thumbnailImage;
+      let finalCoverUrls = form.coverImages || [];
+
+      // 1. Upload Thumbnail hanya jika ada file baru yang dipilih
+      if (thumbFile) {
+        setIsUploadingThumb(true);
+        finalThumbUrl = await uploadImageToCloudinary(thumbFile, "chistix/thumbnails");
+        setIsUploadingThumb(false);
+      }
+
+      // 2. Upload Covers hanya jika ada file baru yang dipilih
+      if (coverFilesList.length > 0) {
+        setIsUploadingCovers(true);
+        const uploadedUrls: string[] = [];
+        for (const file of coverFilesList) {
+          const url = await uploadImageToCloudinary(file, "chistix/covers");
+          uploadedUrls.push(url);
+        }
+        finalCoverUrls = uploadedUrls;
+        setIsUploadingCovers(false);
+      }
+
+      if (!finalThumbUrl || finalCoverUrls.length === 0) {
+        setModalFeedback({
+          isOpen: true,
+          type: "ERROR",
+          message: "Harap pilih Thumbnail Image dan minimal 1 Cover Image!",
+        });
+        return;
+      }
+
       const activePresale = Boolean(form.presale?.enabled) && presaleQuota > 0;
       const payload = {
         title: form.title,
@@ -308,8 +379,8 @@ export default function EditEventPage({
           ? Number(presaleFinalPrice || presalePrice || regularFinalPrice || regularPrice)
           : 0,
 
-        thumbnailImage: form.thumbnailImage || "/images/img-event-1-sq.jpg",
-        coverImages: form.coverImages || [],
+        thumbnailImage: finalThumbUrl,
+        coverImages: finalCoverUrls,
         videoUrl: form.videoUrl || "",
 
         scheduledPublishStart: form.presale?.startDate || "",
@@ -396,7 +467,7 @@ export default function EditEventPage({
                     {/* Event Title */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Event Title
+                        Event Title <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -411,7 +482,7 @@ export default function EditEventPage({
                     {/* Event Category */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Event Category
+                        Event Category <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={form.category}
@@ -429,12 +500,12 @@ export default function EditEventPage({
                     {/* Jadwal Event */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Event Schedule
+                        Event Schedule <span className="text-red-500">*</span>
                       </label>
                       <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <span className="text-xs text-neutral-400 block mb-1">
-                            Start Date & Time
+                            Start Date & Time <span className="text-red-500">*</span>
                           </span>
                           <input
                             type="datetime-local"
@@ -446,7 +517,7 @@ export default function EditEventPage({
                         </div>
                         <div>
                           <span className="text-xs text-neutral-400 block mb-1">
-                            End Date & Time
+                            End Date & Time <span className="text-red-500">*</span>
                           </span>
                           <input
                             type="datetime-local"
@@ -462,7 +533,7 @@ export default function EditEventPage({
                     {/* Description */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Event Description
+                        Event Description <span className="text-red-500">*</span>
                       </label>
                       <textarea
                         rows={4}
@@ -477,7 +548,7 @@ export default function EditEventPage({
                     {/* Province (Emsifa) */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Location Province
+                        Location Province <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={provinceId}
@@ -504,7 +575,7 @@ export default function EditEventPage({
                     {/* City (Emsifa) */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Location City
+                        Location City <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={cityId}
@@ -530,7 +601,7 @@ export default function EditEventPage({
                     {/* Venue Location Maps */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Venue Location Maps
+                        Venue Location Maps <span className="text-xs text-neutral-400 font-normal">(Optional)</span>
                       </label>
                       <input
                         type="url"
@@ -544,7 +615,7 @@ export default function EditEventPage({
                     {/* Venue Detail */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                        Venue Location Detail
+                        Venue Location Detail <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -559,7 +630,7 @@ export default function EditEventPage({
                     {/* Total Ticket Amount */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
                       <label className="text-sm font-medium text-neutral-700">
-                        Total Ticket Amount
+                        Total Ticket Amount <span className="text-red-500">*</span>
                       </label>
                       <div className="sm:col-span-2 flex items-center gap-3">
                         <input
@@ -603,7 +674,9 @@ export default function EditEventPage({
 
                     {/* VIP Tier */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                      <label className="text-sm font-medium text-neutral-700 pl-4">VIP</label>
+                      <label className="text-sm font-medium text-neutral-700 pl-4">
+                        VIP <span className="text-red-500">*</span>
+                      </label>
                       <div className="sm:col-span-2 flex flex-wrap gap-3 items-center text-xs text-neutral-500">
                         <input
                           type="number"
@@ -648,7 +721,9 @@ export default function EditEventPage({
 
                     {/* Regular Tier */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                      <label className="text-sm font-medium text-neutral-700 pl-4">Regular</label>
+                      <label className="text-sm font-medium text-neutral-700 pl-4">
+                        Regular <span className="text-red-500">*</span>
+                      </label>
                       <div className="sm:col-span-2 flex flex-wrap gap-3 items-center text-xs text-neutral-500">
                         <input
                           type="number"
@@ -689,6 +764,27 @@ export default function EditEventPage({
                           />
                         </div>
                       </div>
+                    </div>
+
+                    {/* Panel Informasi Jadwal Penjualan VIP & Regular */}
+                    <div className="ml-4 p-4 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-600 space-y-1.5">
+                      <p className="font-semibold text-neutral-900">
+                        Jadwal Pembukaan & Penutupan Tiket:
+                      </p>
+                      <p>
+                        {form.presale?.enabled && form.presale?.endDate
+                          ? `Tiket VIP & Regular akan dibuka otomatis setelah masa Presale berakhir pada tanggal ${new Date(form.presale.endDate).toLocaleDateString("id-ID")}.`
+                          : "Tiket VIP & Regular langsung dibuka untuk umum saat event dipublikasikan."}
+                      </p>
+                      {salesCloseDate ? (
+                        <p className="text-neutral-500">
+                          Batas akhir seluruh penjualan tiket: H-1 sebelum event dimulai ({salesCloseDate.toLocaleDateString("id-ID")}, pukul {salesCloseDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB).
+                        </p>
+                      ) : (
+                        <p className="text-neutral-400">
+                          Tentukan Start Date acara di atas untuk melihat batas akhir H-1 penjualan tiket.
+                        </p>
+                      )}
                     </div>
 
                     {/* Presale Toggle */}
@@ -779,6 +875,7 @@ export default function EditEventPage({
                             <input
                               type="date"
                               value={form.presale?.endDate}
+                              max={salesCloseDate ? salesCloseDate.toISOString().slice(0, 10) : undefined}
                               onChange={(e) =>
                                 handleChange("presale", {
                                   ...form.presale,
@@ -795,13 +892,13 @@ export default function EditEventPage({
                     {/* Thumbnail Image (Cloudinary) */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                       <label className="text-sm font-medium text-neutral-700">
-                        Thumbnail Image
+                        Thumbnail Image <span className="text-red-500">*</span>
                       </label>
                       <div className="sm:col-span-2 space-y-2">
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={handleThumbnailUpload}
+                          onChange={handleThumbnailSelect}
                           className="text-sm text-neutral-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border file:border-neutral-200 file:text-xs file:font-semibold file:bg-neutral-50 file:text-neutral-700 hover:file:bg-neutral-100 file:cursor-pointer cursor-pointer"
                         />
                         {isUploadingThumb && (
@@ -809,24 +906,40 @@ export default function EditEventPage({
                             Mengunggah thumbnail ke Cloudinary...
                           </p>
                         )}
-                        {form.thumbnailImage && (
-                          <p className="text-xs text-emerald-600 font-medium break-all">
-                            Gambar saat ini: {form.thumbnailImage}
-                          </p>
+                        {(thumbPreview || form.thumbnailImage) && (
+                          <div className="mt-2 flex items-center gap-3">
+                            <img
+                              src={thumbPreview || form.thumbnailImage}
+                              alt="Thumbnail Preview"
+                              className="w-20 h-20 object-cover rounded-xl border border-neutral-200 shadow-xs"
+                            />
+                            <div>
+                              <p className="text-xs text-neutral-700 font-medium">
+                                {thumbFile ? thumbFile.name : "Gambar saat ini dari database"}
+                              </p>
+                              {thumbFile && (
+                                <span className="text-[10px] text-amber-600 font-medium">
+                                  (Akan diunggah ke Cloudinary saat Save Changes)
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         )}
-                        <p className="text-xs text-neutral-400">1:1 Aspect Ratio</p>
+                        <p className="text-xs text-neutral-400">1:1 Aspect Ratio (Cloudinary Hosting)</p>
                       </div>
                     </div>
 
                     {/* Cover Images (Cloudinary) */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
-                      <label className="text-sm font-medium text-neutral-700">Images Cover</label>
+                      <label className="text-sm font-medium text-neutral-700">
+                        Images Cover <span className="text-red-500">*</span>
+                      </label>
                       <div className="sm:col-span-2 space-y-2">
                         <input
                           type="file"
                           accept="image/*"
                           multiple
-                          onChange={handleCoversUpload}
+                          onChange={handleCoversSelect}
                           className="text-sm text-neutral-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border file:border-neutral-200 file:text-xs file:font-semibold file:bg-neutral-50 file:text-neutral-700 hover:file:bg-neutral-100 file:cursor-pointer cursor-pointer"
                         />
                         {isUploadingCovers && (
@@ -834,7 +947,59 @@ export default function EditEventPage({
                             Mengunggah cover ke Cloudinary...
                           </p>
                         )}
-                        <p className="text-xs text-neutral-400">2:1 Aspect Ratio</p>
+                        {coverPreviews.length > 0 ? (
+                          <div className="space-y-1">
+                            <div className="flex gap-2 flex-wrap mt-2">
+                              {coverPreviews.map((src, i) => (
+                                <img
+                                  key={i}
+                                  src={src}
+                                  alt={`Cover Preview ${i + 1}`}
+                                  className="w-24 h-14 object-cover rounded-lg border border-neutral-200 shadow-xs"
+                                />
+                              ))}
+                            </div>
+                            <span className="text-[10px] text-amber-600 font-medium block">
+                              ({coverFilesList.length} gambar baru akan diunggah ke Cloudinary saat Save Changes)
+                            </span>
+                          </div>
+                        ) : form.coverImages && form.coverImages.length > 0 ? (
+                          <div className="space-y-1">
+                            <div className="flex gap-2 flex-wrap mt-2">
+                              {form.coverImages.map((src, i) => (
+                                <img
+                                  key={i}
+                                  src={src}
+                                  alt={`Cover Saat Ini ${i + 1}`}
+                                  className="w-24 h-14 object-cover rounded-lg border border-neutral-200 shadow-xs"
+                                />
+                              ))}
+                            </div>
+                            <span className="text-[10px] text-neutral-500 font-medium block">
+                              ({form.coverImages.length} gambar cover saat ini dari database)
+                            </span>
+                          </div>
+                        ) : null}
+                        <p className="text-xs text-neutral-400">2:1 Aspect Ratio (Cloudinary Hosting)</p>
+                      </div>
+                    </div>
+
+                    {/* Video URL (Opsional / Teaser Trailer) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
+                      <label className="text-sm font-medium text-neutral-700 pt-2.5">
+                        Video URL / Teaser <span className="text-xs text-neutral-400 font-normal">(Optional)</span>
+                      </label>
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <input
+                          type="url"
+                          placeholder="https://www.youtube.com/watch?v=... atau link video MP4"
+                          value={form.videoUrl || ""}
+                          onChange={(e) => handleChange("videoUrl", e.target.value)}
+                          className="w-full border border-neutral-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#BB4D00] bg-neutral-50"
+                        />
+                        <p className="text-xs text-neutral-400">
+                          Masukkan link YouTube trailer event atau video promosi (opsional).
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -867,8 +1032,8 @@ export default function EditEventPage({
                         <button
                           type="button"
                           onClick={handleSaveUpdate}
-                          disabled={isUploadingThumb || isUploadingCovers}
-                          className="px-6 py-2.5 rounded-full text-sm font-semibold text-white bg-[#EA580C] hover:bg-[#BB4D00] transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                          disabled={isUploadingThumb || isUploadingCovers || isQuotaExceeded || !agreedToTerms}
+                          className="px-6 py-2.5 rounded-full text-sm font-semibold text-white bg-[#EA580C] hover:bg-[#BB4D00] transition-colors cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Save Changes
                         </button>

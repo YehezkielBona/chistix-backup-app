@@ -8,11 +8,7 @@ import { ChevronRightIcon, HomeIcon } from "@heroicons/react/24/outline";
 import NavbarOrganizer from "@/components/menubar/navbarOrganizer";
 import Footer from "@/components/menubar/footer";
 
-export default function EditVoucherPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function EditVoucherPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const resolvedParams = use(params);
   const voucherId = resolvedParams.id;
@@ -47,7 +43,11 @@ export default function EditVoucherPage({
         const eventsRes = await fetch("/api/organizer/events");
         const eventsJson = await eventsRes.json();
         if (eventsJson.success && eventsJson.data) {
-          setEventsList(eventsJson.data);
+          const activeEvents = eventsJson.data.filter((evt: any) => {
+            const st = (evt.status || "").replace(/\s+/g, "_").toUpperCase();
+            return st !== "ENDED" || evt.id === eventId;
+          });
+          setEventsList(activeEvents);
         }
 
         // B. Ambil detail voucher yang sedang diedit
@@ -80,6 +80,25 @@ export default function EditVoucherPage({
   // 4. Handle Simpan Perubahan (PUT)
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (new Date(validEnd) <= new Date(validStart)) {
+      alert("Tanggal berakhir voucher harus setelah tanggal mulai!");
+      return;
+    }
+    if (!code || code.trim().length < 3) {
+      alert("Kode voucher minimal 3 karakter!");
+      return;
+    }
+
+    if (Number(discount) <= 0) {
+      alert("Besaran diskon harus lebih besar dari 0!");
+      return;
+    }
+
+    if (discountType === "PERCENTAGE" && Number(discount) > 100) {
+      alert("Diskon tipe persentase tidak boleh melebihi 100%!");
+      return;
+    }
 
     if (new Date(validEnd) <= new Date(validStart)) {
       alert("Tanggal berakhir voucher harus setelah tanggal mulai!");
@@ -121,11 +140,7 @@ export default function EditVoucherPage({
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-[#faf8f4] flex items-center justify-center text-sm text-neutral-500 font-medium">
-        Memuat detail voucher...
-      </div>
-    );
+    return <div className="min-h-screen bg-[#faf8f4] flex items-center justify-center text-sm text-neutral-500 font-medium">Memuat detail voucher...</div>;
   }
 
   return (
@@ -153,9 +168,7 @@ export default function EditVoucherPage({
             <div className="bg-white rounded-2xl border border-neutral-100 shadow-xs p-6 md:p-8">
               <div className="flex items-center justify-between mb-6">
                 <h1 className="text-xl font-bold text-neutral-900">Edit Voucher</h1>
-                <span className="text-xs font-mono text-neutral-400 bg-neutral-100 px-2.5 py-1 rounded-md">
-                  ID: {voucherId}
-                </span>
+                <span className="text-xs font-mono text-neutral-400 bg-neutral-100 px-2.5 py-1 rounded-md">ID: {voucherId}</span>
               </div>
 
               <form onSubmit={handleUpdate} className="space-y-4 max-w-xl">
@@ -194,23 +207,11 @@ export default function EditVoucherPage({
                   <label className="text-sm font-semibold text-neutral-700">Discount Type</label>
                   <div className="sm:col-span-2 flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer text-sm">
-                      <input
-                        type="radio"
-                        name="discountType"
-                        value="PERCENTAGE"
-                        checked={discountType === "PERCENTAGE"}
-                        onChange={() => setDiscountType("PERCENTAGE")}
-                      />
+                      <input type="radio" name="discountType" value="PERCENTAGE" checked={discountType === "PERCENTAGE"} onChange={() => setDiscountType("PERCENTAGE")} />
                       <span>Percentage (%)</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer text-sm">
-                      <input
-                        type="radio"
-                        name="discountType"
-                        value="FIXED"
-                        checked={discountType === "FIXED"}
-                        onChange={() => setDiscountType("FIXED")}
-                      />
+                      <input type="radio" name="discountType" value="FIXED" checked={discountType === "FIXED"} onChange={() => setDiscountType("FIXED")} />
                       <span>Fixed Amount (Rp)</span>
                     </label>
                   </div>
@@ -220,9 +221,7 @@ export default function EditVoucherPage({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
                   <label className="text-sm font-semibold text-neutral-700">Discount</label>
                   <div className="sm:col-span-2 relative flex items-center">
-                    <span className="absolute left-3.5 text-xs text-neutral-400 font-semibold">
-                      {discountType === "PERCENTAGE" ? "%" : "Rp"}
-                    </span>
+                    <span className="absolute left-3.5 text-xs text-neutral-400 font-semibold">{discountType === "PERCENTAGE" ? "%" : "Rp"}</span>
                     <input
                       type="number"
                       min={1}
@@ -273,17 +272,14 @@ export default function EditVoucherPage({
                 </div>
 
                 <div className="pt-4 flex items-center gap-3">
-                  <button
-                    type="submit"
-                    disabled={isUpdating}
-                    className="px-8 py-2.5 rounded-full text-sm font-semibold text-white bg-[#ea580c] hover:bg-[#bb4d00] transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-                  >
+                  <button 
+                  type="submit" 
+                  disabled=
+                  {isUpdating || !code || !discount || (discountType === "PERCENTAGE" && Number(discount) > 100)} 
+                  className="px-8 py-2.5 rounded-full text-sm font-semibold text-white bg-[#ea580c] hover:bg-[#bb4d00] transition-colors cursor-pointer shadow-xs disabled:opacity-50">
                     {isUpdating ? "Updating..." : "Update Voucher"}
                   </button>
-                  <Link
-                    href="/organizer/dashboard/vouchers"
-                    className="px-8 py-2.5 rounded-full text-sm font-semibold text-neutral-600 border border-neutral-200 hover:bg-neutral-100 transition-colors"
-                  >
+                  <Link href="/organizer/dashboard/vouchers" className="px-8 py-2.5 rounded-full text-sm font-semibold text-neutral-600 border border-neutral-200 hover:bg-neutral-100 transition-colors">
                     Cancel
                   </Link>
                 </div>

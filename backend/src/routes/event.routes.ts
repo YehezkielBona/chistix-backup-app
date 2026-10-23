@@ -14,6 +14,8 @@ import {
 } from "../controllers/event.controller.js";
 import { sendResult } from "../lib/sendResult.js";
 import { requireOrganizer } from "../middlewares/role.middleware.js";
+import { Request, Response } from "express";
+import { prisma } from "../lib/prisma.js";
 
 const organizerEventRouter = Router();
 
@@ -39,6 +41,20 @@ organizerEventRouter.get("/:id", async (req, res) => {
 // PUT /api/organizer/events/:id -> edit event
 organizerEventRouter.put("/:id", async (req, res) => {
   sendResult(res, await updateEventController(String(req.params.id), req.body));
+});
+
+// PATCH /api/organizer/events/:id/end
+
+organizerEventRouter.put("/:id/end", async (req, res) => {
+  const { id } = req.params;
+  const updated = await prisma.event.update({
+    where: { id: String(id) },
+    data: { eventStatus: "ENDED" },
+  });
+  sendResult(res, {
+    success: true, data: updated,
+    statusCode: 201
+  });
 });
 
 // DELETE /api/organizer/events/:id -> soft delete event

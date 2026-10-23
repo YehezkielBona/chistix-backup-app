@@ -3,14 +3,13 @@
 // Disesuaikan dengan schema.prisma terbaru (flat tier columns).
 // ============================================================
 import { prisma } from "../lib/prisma.js";
-import { calculateEventStatus } from "../utils/status.js";
+import { calculateEventStatus, calculateTicketSalesPhase } from "../utils/status.js";
 import type { CreateEventInput } from "../middlewares/event.middleware.js";
 
 /**
  * Mengubah baris Event dari Prisma menjadi objek yang siap dipakai Frontend.
- * Kita sertakan field schema baru SEKALIGUS field alias (status, totalTicket,
- * province, city, ticketTiers) agar semua komponen tabel & halaman di Frontend
- * tetap kompatibel 100% tanpa ada yang error!
+ * Menghitung status event (DRAFT, UPCOMING, ON_STAGE, ENDED) sekaligus
+ * fase penjualan tiket (PRESALE_ACTIVE, GENERAL_SALES, SALES_CLOSED).
  */
 export function formatEventForClient(event: any) {
   const liveStatus = calculateEventStatus(
@@ -19,6 +18,14 @@ export function formatEventForClient(event: any) {
     new Date(event.endDate),
   );
 
+  // Kalkulasi fase penjualan tiket secara dinamis
+  const salesInfo = calculateTicketSalesPhase({
+    startDate: new Date(event.startDate),
+    isPresale: Boolean(event.isPresale || event.presaleQuota > 0),
+    presaleStart: event.scheduledPublishStart ? new Date(event.scheduledPublishStart) : null,
+    presaleEnd: event.scheduledPublishEnd ? new Date(event.scheduledPublishEnd) : null,
+  });
+
   // Hitung tiket terjual dari transaksi yang tidak dibatalkan/ditolak (jika relasi di-include)
   const soldCount = Array.isArray(event.transactions)
     ? event.transactions
@@ -26,8 +33,41 @@ export function formatEventForClient(event: any) {
         .reduce((sum: number, t: any) => sum + (t.quantity || 0), 0)
     : 0;
 
+  // Fungsi penentu ketersediaan & label status tiket yang ramah user
+  const getTierInfo = (tierName: "VIP" | "Regular" | "Presale", quota: number, sold: number) => {
+    if (salesInfo.phase === "SALES_CLOSED") {
+      return { isAvailable: false, statusLabel: "Penjualan Ditutup (H-1)" };
+    }
+    if (quota > 0 && sold >= quota) {
+      return { isAvailable: false, statusLabel: "Habis Terjual (Sold Out)" };
+    }
+
+    if (tierName === "Presale") {
+      if (salesInfo.phase === "PRESALE_UPCOMING") {
+        return { isAvailable: false, statusLabel: "Segera Hadir" };
+      }
+      if (salesInfo.phase === "PRESALE_ACTIVE") {
+        return { isAvailable: true, statusLabel: "Tersedia" };
+      }
+      return { isAvailable: false, statusLabel: "Periode Presale Selesai" };
+    }
+
+    // Untuk VIP & Regular:
+    if (salesInfo.phase === "PRESALE_ACTIVE" || salesInfo.phase === "PRESALE_UPCOMING") {
+      const openDate = salesInfo.vipRegularStartDate
+        ? `Dibuka ${new Date(salesInfo.vipRegularStartDate).toLocaleDateString("id-ID")}`
+        : "Belum Dibuka";
+      return { isAvailable: false, statusLabel: openDate };
+    }
+
+    return { isAvailable: true, statusLabel: "Tersedia" };
+  };
+
+  const vipInfo = getTierInfo("VIP", event.vipQuota, 0);
+  const regInfo = getTierInfo("Regular", event.regularQuota, soldCount);
+
   // Susun array ticketTiers virtual dari kolom flat agar UI tabel Event tetap jalan
-  const ticketTiers = [
+  const ticketTiers: any[] = [
     {
       id: `${event.id}-vip`,
       name: "VIP",
@@ -35,6 +75,8 @@ export function formatEventForClient(event: any) {
       finalPrice: event.vipPriceFinal,
       quota: event.vipQuota,
       sold: 0,
+      isAvailable: vipInfo.isAvailable,
+      statusLabel: vipInfo.statusLabel,
     },
     {
       id: `${event.id}-reg`,
@@ -43,10 +85,13 @@ export function formatEventForClient(event: any) {
       finalPrice: event.regularPriceFinal,
       quota: event.regularQuota,
       sold: soldCount,
+      isAvailable: regInfo.isAvailable,
+      statusLabel: regInfo.statusLabel,
     },
   ];
 
   if (event.isPresale || event.presaleQuota > 0) {
+    const preInfo = getTierInfo("Presale", event.presaleQuota, 0);
     ticketTiers.push({
       id: `${event.id}-pre`,
       name: "Presale",
@@ -54,6 +99,8 @@ export function formatEventForClient(event: any) {
       finalPrice: event.presalePriceFinal,
       quota: event.presaleQuota,
       sold: 0,
+      isAvailable: preInfo.isAvailable,
+      statusLabel: preInfo.statusLabel,
     });
   }
 
@@ -62,6 +109,9 @@ export function formatEventForClient(event: any) {
     eventStatus: liveStatus,
     // Alias untuk kompatibilitas UI Frontend:
     status: liveStatus,
+    salesPhase: salesInfo.phase,
+    salesCloseDate: salesInfo.salesCloseDate.toISOString(),
+    vipRegularStartDate: salesInfo.vipRegularStartDate ? salesInfo.vipRegularStartDate.toISOString() : null,
     totalTicket: event.totalQuotaTiket,
     province: event.provinceName,
     city: event.cityName,

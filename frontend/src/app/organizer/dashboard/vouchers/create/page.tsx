@@ -21,8 +21,10 @@ export default function CreateVoucherPage() {
   const [maxUsage, setMaxUsage] = useState<number>(100);
 
   // 2. State untuk Data Event dari Database Neon & Status Loading
-  const [eventsList, setEventsList] = useState<{ id: string; title: string; status: string }[]>([]);
+  const [eventsList, setEventsList] = useState<{ id: string; title: string; status: string; startDate: string; endDate: string }[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const selectedEvent = eventsList.find((e) => e.id === eventId)
+  const eventEndDateFormatted = selectedEvent?.endDate ? new Date(selectedEvent.endDate).toISOString().split("T")[0] : undefined
 
   // 3. Tarik Event dari Database saat halaman dibuka
   useEffect(() => {
@@ -31,10 +33,10 @@ export default function CreateVoucherPage() {
         const res = await fetch("/api/organizer/events");
         const json = await res.json();
         if (json.success && json.data) {
-          // Filter hanya event dengan status DRAFT atau UPCOMING (sesuai aturanmu!)
+          // Filter hanya event dengan status DRAFT atau UPCOMING 
           const filtered = json.data.filter((evt: any) => {
             const st = (evt.status || "").replace(/\s+/g, "_").toUpperCase();
-            return st === "DRAFT" || st === "UPCOMING";
+            return st !== "ENDED";
           });
           setEventsList(filtered);
         }
@@ -58,6 +60,22 @@ export default function CreateVoucherPage() {
     if (new Date(validEnd) <= new Date(validStart)) {
       alert("Tanggal berakhir voucher harus setelah tanggal mulai!");
       return;
+    }
+
+    if (selectedEvent && selectedEvent.endDate) {
+      const eventEnd = new Date(selectedEvent.endDate)
+      if(new Date(validStart) >= eventEnd) {
+        alert(
+          `Tanggal mulai voucher tidak boleh setelah event selesai! Event "${selectedEvent.title}" selesai pada ${eventEndDateFormatted}`
+        )
+        return
+      }
+      if(new Date(validEnd) > eventEnd) {
+        alert(
+          `Masa berlaku voucher tidak boleh melebihi tanggal berakhirnya event! Maksimal tanggal: ${eventEndDateFormatted}`
+        )
+        return
+      }
     }
 
     try {
@@ -209,6 +227,7 @@ export default function CreateVoucherPage() {
                   <input
                     type="date"
                     value={validStart}
+                    max={eventEndDateFormatted}
                     onChange={(e) => setValidStart(e.target.value)}
                     className="sm:col-span-2 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#BB4D00] bg-neutral-50 cursor-pointer"
                     required
@@ -221,10 +240,18 @@ export default function CreateVoucherPage() {
                   <input
                     type="date"
                     value={validEnd}
+                    min={validStart || undefined}
+                    max={eventEndDateFormatted}
                     onChange={(e) => setValidEnd(e.target.value)}
                     className="sm:col-span-2 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#BB4D00] bg-neutral-50 cursor-pointer"
                     required
                   />
+                  {selectedEvent && (
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Period Event: {new Date(selectedEvent.startDate).toLocaleDateString("id-ID")} s/d {" "}
+                      <strong className="text-amber-700">{new Date(selectedEvent.endDate).toLocaleDateString("id-ID")}</strong>
+                    </p>
+                  )}
                 </div>
 
                 {/* 7. Max Usage */}

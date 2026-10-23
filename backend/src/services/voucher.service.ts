@@ -83,7 +83,7 @@ export async function createVoucherService(data: CreateVoucherInput) {
         new Date(evt.startDate),
         new Date(evt.endDate),
       );
-      return st === "DRAFT" || st === "UPCOMING";
+      return st !== "ENDED";
     });
 
     if (eligibleEvents.length === 0) {
@@ -107,6 +107,22 @@ export async function createVoucherService(data: CreateVoucherInput) {
     );
 
     return { createdAll: true as const, data: created };
+  }
+
+  const targetEvent = await prisma.event.findUnique({
+    where: { id:eventId},
+  })
+
+  if(!targetEvent || targetEvent.deletedAt) {
+    return {eventNotFound: true as const}
+  }
+
+  const eventEnd = new Date(targetEvent.endDate)
+  if(new Date(validStart) >= eventEnd) {
+    throw new Error ("Voucher sudah tidak dapat digunakan karena tanggal mulai voucher sudah melewati tanggal event berakhir")
+  }
+  if(new Date(validEnd) > eventEnd) {
+    throw new Error("Tanggal kadaluarsa voucher tidak boleh melebihi tanggal event berakhir")
   }
 
   // Untuk 1 event spesifik
