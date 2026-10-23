@@ -112,7 +112,7 @@ function CartContent() {
       {/* Header Cart */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
         <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-          <span>🛒</span> Event Cart
+          Event Cart
         </h1>
       </div>
 

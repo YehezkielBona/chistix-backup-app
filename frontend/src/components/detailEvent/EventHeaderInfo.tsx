@@ -9,7 +9,6 @@ interface EventHeaderInfoProps {
   event: EventItem;
 }
 
-
 export default function EventHeaderInfo({ event }: EventHeaderInfoProps) {
   const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
     event.location

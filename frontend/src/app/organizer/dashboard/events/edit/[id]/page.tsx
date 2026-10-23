@@ -101,6 +101,11 @@ export default function EditEventPage({
   allocatedQuota > totalTicket ||
   remainingQuota !== 0;
 
+  // Rumus Matematika H-1: kurangi 24 jam x 60 menit x 60 detik x 1000 ms dari startDate
+  const salesCloseDate = startDate
+    ? new Date(new Date(startDate).getTime() - 24 * 60 * 60 * 1000)
+    : null;
+
   const handleChange = (field: keyof EventFormData, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -281,6 +286,33 @@ export default function EditEventPage({
         message: `Alokasi kuota tiket belum pas! Sisa kuota: ${remainingQuota} tiket. Total pembagian VIP + Regular + Presale harus tepat sama dengan ${totalTicket}!`,
       });
       return;
+    }
+
+    if (form.presale?.enabled && presaleQuota > 0) {
+      if (!form.presale.startDate || !form.presale.endDate) {
+        setModalFeedback({
+          isOpen: true,
+          type: "ERROR",
+          message: "Harap tentukan tanggal mulai dan akhir periode Presale!",
+        });
+        return;
+      }
+      if (new Date(form.presale.endDate) <= new Date(form.presale.startDate)) {
+        setModalFeedback({
+          isOpen: true,
+          type: "ERROR",
+          message: "Tanggal berakhir Presale harus setelah tanggal mulai Presale!",
+        });
+        return;
+      }
+      if (salesCloseDate && new Date(form.presale.endDate) > salesCloseDate) {
+        setModalFeedback({
+          isOpen: true,
+          type: "ERROR",
+          message: `Periode Presale tidak boleh melebihi batas H-1 acara (${salesCloseDate.toLocaleDateString("id-ID")}) agar ada waktu untuk penjualan tiket VIP & Regular!`,
+        });
+        return;
+      }
     }
 
     try {
@@ -734,6 +766,27 @@ export default function EditEventPage({
                       </div>
                     </div>
 
+                    {/* Panel Informasi Jadwal Penjualan VIP & Regular */}
+                    <div className="ml-4 p-4 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-600 space-y-1.5">
+                      <p className="font-semibold text-neutral-900">
+                        Jadwal Pembukaan & Penutupan Tiket:
+                      </p>
+                      <p>
+                        {form.presale?.enabled && form.presale?.endDate
+                          ? `Tiket VIP & Regular akan dibuka otomatis setelah masa Presale berakhir pada tanggal ${new Date(form.presale.endDate).toLocaleDateString("id-ID")}.`
+                          : "Tiket VIP & Regular langsung dibuka untuk umum saat event dipublikasikan."}
+                      </p>
+                      {salesCloseDate ? (
+                        <p className="text-neutral-500">
+                          Batas akhir seluruh penjualan tiket: H-1 sebelum event dimulai ({salesCloseDate.toLocaleDateString("id-ID")}, pukul {salesCloseDate.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB).
+                        </p>
+                      ) : (
+                        <p className="text-neutral-400">
+                          Tentukan Start Date acara di atas untuk melihat batas akhir H-1 penjualan tiket.
+                        </p>
+                      )}
+                    </div>
+
                     {/* Presale Toggle */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
                       <label className="text-sm font-medium text-neutral-700 pl-4">
@@ -822,6 +875,7 @@ export default function EditEventPage({
                             <input
                               type="date"
                               value={form.presale?.endDate}
+                              max={salesCloseDate ? salesCloseDate.toISOString().slice(0, 10) : undefined}
                               onChange={(e) =>
                                 handleChange("presale", {
                                   ...form.presale,
