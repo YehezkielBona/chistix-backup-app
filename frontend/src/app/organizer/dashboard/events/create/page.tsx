@@ -68,6 +68,10 @@ export default function CreateEventPage() {
   const [presaleFinalPrice, setPresaleFinalPrice] = useState<number>(0);
 
   // State Upload Cloudinary & Loading
+  const [thumbFile, setThumbFile] = useState<File | null>(null);
+  const [thumbPreview, setThumbPreview] = useState<string>("");
+  const [coverFileList, setCoverFileList] = useState<File[]>([]);
+  const [coverPreviews, setCoverPreviews] = useState<string[]>([]);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
   const [isUploadingCovers, setIsUploadingCovers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -104,52 +108,33 @@ export default function CreateEventPage() {
   }, [provinceId]);
 
   // Kalkulasi Kuota
-  const allocatedQuota =
-    vipQuota + regularQuota + (form.presale?.enabled ? presaleQuota : 0);
+  const allocatedQuota = vipQuota + regularQuota + (form.presale?.enabled ? presaleQuota : 0);
   const remainingQuota = totalTicket - allocatedQuota;
-  const isQuotaExceeded = 
-  totalTicket <= 0 ||
-  vipQuota > totalTicket ||
-  (Boolean(form.presale?.enabled) && presaleQuota > totalTicket) ||
-  allocatedQuota > totalTicket ||
-  remainingQuota !== 0
+  const isQuotaExceeded = totalTicket <= 0 || vipQuota > totalTicket || (Boolean(form.presale?.enabled) && presaleQuota > totalTicket) || allocatedQuota > totalTicket || remainingQuota !== 0;
 
   const handleChange = (field: keyof EventFormData, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   // Handler Upload Thumbnail ke Cloudinary
-  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      setIsUploadingThumb(true);
-      const url = await uploadImageToCloudinary(file, "chistix/thumbnails");
-      handleChange("thumbnailImage", url);
-    } catch (err: any) {
-      alert("Gagal upload thumbnail ke Cloudinary: " + err.message);
-    } finally {
-      setIsUploadingThumb(false);
-    }
+
+    setThumbFile(file);
+    setThumbPreview(URL.createObjectURL(file));
+    e.target.value = "";
   };
 
   // Handler Upload Cover Images ke Cloudinary
-  const handleCoversUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoversSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    try {
-      setIsUploadingCovers(true);
-      const urls: string[] = [];
-      for (const f of files) {
-        const u = await uploadImageToCloudinary(f, "chistix/covers");
-        urls.push(u);
-      }
-      handleChange("coverImages", urls);
-    } catch (err: any) {
-      alert("Gagal upload cover ke Cloudinary: " + err.message);
-    } finally {
-      setIsUploadingCovers(false);
-    }
+
+    setCoverFileList(files);
+    const previews = files.map((f) => URL.createObjectURL(f));
+    setCoverPreviews(previews);
+    e.target.value = "";
   };
 
   // Fungsi kirim Event ke Backend Express (mendukung Draft maupun Publish)
@@ -159,6 +144,11 @@ export default function CreateEventPage() {
       return;
     }
 
+    const hasThumbnail = Boolean(form.thumbnailImage || thumbFile);
+    const hasCovers = Boolean(
+      (form.coverImages && form.coverImages.length > 0) || coverFileList.length > 0,
+    );
+
     if (
       !form.title ||
       !startDate ||
@@ -167,10 +157,10 @@ export default function CreateEventPage() {
       !form.province ||
       !form.city ||
       !form.venueDetail ||
-      !form.thumbnailImage ||
-      !form.coverImages || form.coverImages.length === 0
+      !hasThumbnail ||
+      !hasCovers
     ) {
-      alert("Harap lengkapi semua field yang wajib diisi!");
+      alert("Harap lengkapi semua field yang wajib diisi, termasuk Thumbnail dan minimal 1 Cover Image!");
       return;
     }
 
@@ -180,14 +170,38 @@ export default function CreateEventPage() {
     }
 
     if (remainingQuota !== 0) {
-      alert(
-        `Alokasi kuota tiket belum pas! Sisa kuota: ${remainingQuota} tiket. Total pembagian VIP + Regular + Presale harus tepat sama dengan ${totalTicket}!`,
-      );
+      alert(`Alokasi kuota tiket belum pas! Sisa kuota: ${remainingQuota} tiket. Total pembagian VIP + Regular + Presale harus tepat sama dengan ${totalTicket}!`);
       return;
     }
 
     try {
       setIsSubmitting(true);
+
+      let finalThumbUrl = form.thumbnailImage;
+      let finalCoverUrls = form.coverImages || [];
+
+      if (thumbFile) {
+        setIsUploadingThumb(true);
+        finalThumbUrl = await uploadImageToCloudinary(thumbFile, "chistix/thumbnails");
+        setIsUploadingThumb(false);
+      }
+
+      if (coverFileList.length > 0) {
+        setIsUploadingCovers(true);
+        const uploadUrls: string[] = [];
+        for (const file of coverFileList) {
+          const url = await uploadImageToCloudinary(file, "chistix/covers");
+          uploadUrls.push(url);
+        }
+        finalCoverUrls = uploadUrls;
+        setIsUploadingCovers(false);
+      }
+
+      if (!finalThumbUrl || finalCoverUrls.length === 0) {
+        alert("Harap pilih thumbnail image dan minimal 1 cover image!");
+        setIsSubmitting(false);
+        return;
+      }
 
       const activePresale = Boolean(form.presale?.enabled) && presaleQuota > 0;
       const payload = {
@@ -217,13 +231,11 @@ export default function CreateEventPage() {
 
         presaleQuota: activePresale ? Number(presaleQuota) : 0,
         presalePriceNormal: activePresale ? Number(presalePrice || regularPrice) : 0,
-        presalePriceFinal: activePresale
-          ? Number(presaleFinalPrice || presalePrice || regularFinalPrice || regularPrice)
-          : 0,
+        presalePriceFinal: activePresale ? Number(presaleFinalPrice || presalePrice || regularFinalPrice || regularPrice) : 0,
 
-        thumbnailImage: form.thumbnailImage,
-        coverImages: form.coverImages,
-        videoUrl: form.videoUrl || "",
+        thumbnailImage: finalThumbUrl,
+        coverImages: finalCoverUrls,
+        videoUrl: form.videoUrl ? form.videoUrl.trim(): null,
 
         scheduledPublishStart: form.presale?.startDate || "",
         scheduledPublishEnd: form.presale?.endDate || "",
@@ -242,11 +254,7 @@ export default function CreateEventPage() {
         throw new Error(json.message || "Gagal membuat event");
       }
 
-      alert(
-        isDraft
-          ? "📝 Event berhasil disimpan sebagai DRAFT di database Neon!"
-          : "🎉 Sukses! Event berhasil dipublish dan tersimpan di database Neon!",
-      );
+      alert(isDraft ? "📝 Event berhasil disimpan sebagai DRAFT!" : "🎉 Sukses! Event berhasil dipublish dan tersimpan!");
       router.push("/organizer/dashboard/events");
     } catch (err: any) {
       console.error(err);
@@ -266,20 +274,14 @@ export default function CreateEventPage() {
           <div className="flex-1 w-full space-y-4">
             {/* Breadcrumb Nav */}
             <nav className="flex items-center gap-1.5 text-xs md:text-sm text-neutral-500">
-              <Link
-                href="/organizer/dashboard"
-                className="flex items-center gap-1 hover:text-[#BB4D00] transition-colors font-medium"
-              >
+              <Link href="/organizer/dashboard" className="flex items-center gap-1 hover:text-[#BB4D00] transition-colors font-medium">
                 <HomeIcon className="w-3.5 h-3.5" />
                 <span>Dashboard</span>
               </Link>
 
               <ChevronRightIcon className="w-3.5 h-3.5 text-neutral-300" />
 
-              <Link
-                href="/organizer/dashboard/events"
-                className="hover:text-[#BB4D00] transition-colors font-medium"
-              >
+              <Link href="/organizer/dashboard/events" className="hover:text-[#BB4D00] transition-colors font-medium">
                 Events
               </Link>
 
@@ -292,7 +294,9 @@ export default function CreateEventPage() {
               <div className="p-6 md:p-8 space-y-5">
                 {/* Event Title */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
-                  <label className="text-sm font-medium text-neutral-700 pt-2.5">Event Title</label>
+                  <label className="text-sm font-medium text-neutral-700 pt-2.5">
+                    Event Title <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
                     placeholder="Nama event..."
@@ -305,7 +309,9 @@ export default function CreateEventPage() {
 
                 {/* Event Category */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
-                  <label className="text-sm font-medium text-neutral-700 pt-2.5">Event Category</label>
+                  <label className="text-sm font-medium text-neutral-700 pt-2.5">
+                    Event Category <span className="text-red-500">*</span>
+                  </label>
                   <select
                     value={form.category}
                     onChange={(e) => handleChange("category", e.target.value)}
@@ -322,12 +328,12 @@ export default function CreateEventPage() {
                 {/* 1. JADWAL EVENT */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                   <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                    Event Schedule
+                    Event Schedule <span className="text-red-500">*</span>
                   </label>
                   <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <span className="text-xs text-neutral-400 block mb-1">
-                        Start Date & Time (Live On Stage)
+                        Start Date & Time (Live On Stage) <span className="text-red-500">*</span>
                       </span>
                       <input
                         type="datetime-local"
@@ -339,7 +345,7 @@ export default function CreateEventPage() {
                     </div>
                     <div>
                       <span className="text-xs text-neutral-400 block mb-1">
-                        End Date & Time (Event Ended)
+                        End Date & Time (Event Ended) <span className="text-red-500">*</span>
                       </span>
                       <input
                         type="datetime-local"
@@ -355,7 +361,7 @@ export default function CreateEventPage() {
                 {/* Event Description */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                   <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                    Event Description
+                    Event Description <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     rows={4}
@@ -370,7 +376,7 @@ export default function CreateEventPage() {
                 {/* Province (Terintegrasi API Emsifa via Express) */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                   <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                    Location Province
+                    Location Province <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={provinceId}
@@ -397,7 +403,7 @@ export default function CreateEventPage() {
                 {/* City (Terintegrasi API Emsifa via Express) */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                   <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                    Location City
+                    Location City <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={cityId}
@@ -422,9 +428,7 @@ export default function CreateEventPage() {
 
                 {/* Venue Location Maps */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
-                  <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                    Venue Location Maps
-                  </label>
+                  <label className="text-sm font-medium text-neutral-700 pt-2.5">Venue Location Maps</label>
                   <input
                     type="url"
                     placeholder="https://maps.google.com/..."
@@ -437,7 +441,7 @@ export default function CreateEventPage() {
                 {/* Venue Location Detail */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
                   <label className="text-sm font-medium text-neutral-700 pt-2.5">
-                    Venue Location Detail
+                    Venue Location Detail <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -451,7 +455,9 @@ export default function CreateEventPage() {
 
                 {/* 2. TOTAL TICKET AMOUNT */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                  <label className="text-sm font-medium text-neutral-700">Total Ticket Amount</label>
+                  <label className="text-sm font-medium text-neutral-700">
+                    Total Ticket Amount <span className="text-red-500">*</span>
+                  </label>
                   <div className="sm:col-span-2 flex items-center gap-3">
                     <input
                       type="number"
@@ -477,19 +483,19 @@ export default function CreateEventPage() {
                         totalTicket === 0
                           ? "bg-neutral-100 text-neutral-500"
                           : remainingQuota === 0
-                          ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                          : remainingQuota < 0
-                          ? "bg-rose-100 text-rose-700 border border-rose-200"
-                          : "bg-amber-100 text-amber-700 border border-amber-200"
+                            ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                            : remainingQuota < 0
+                              ? "bg-rose-100 text-rose-700 border border-rose-200"
+                              : "bg-amber-100 text-amber-700 border border-amber-200"
                       }`}
                     >
                       {totalTicket === 0
                         ? "Isi total kuota dahulu"
                         : remainingQuota === 0
-                        ? "✅ Kuota pas terbagi!"
-                        : remainingQuota < 0
-                        ? `⚠️ Kelebihan ${Math.abs(remainingQuota)} tikets! kuota per kategori tidak boleh melebihi total ticket dan sisa kuota harus tepat 0!`
-                        : `Sisa Kuota: ${remainingQuota} tiket`}
+                          ? "✅ Kuota pas terbagi!"
+                          : remainingQuota < 0
+                            ? `⚠️ Kelebihan ${Math.abs(remainingQuota)} tikets! kuota per kategori tidak boleh melebihi total ticket dan sisa kuota harus tepat 0!`
+                            : `Sisa Kuota: ${remainingQuota} tiket`}
                     </span>
                   </div>
                 </div>
@@ -503,22 +509,16 @@ export default function CreateEventPage() {
                 <div className="border-t border-neutral-100 pt-2" />
 
                 {/* TICKET TIERS WRAPPER */}
-                <div
-                  className={`relative space-y-4 ${
-                    !totalTicket || totalTicket <= 0 ? "opacity-60" : ""
-                  }`}
-                >
+                <div className={`relative space-y-4 ${!totalTicket || totalTicket <= 0 ? "opacity-60" : ""}`}>
                   {(!totalTicket || totalTicket <= 0) && (
-                    <div
-                      onClick={() => setTierWarning(true)}
-                      className="absolute inset-0 z-20 cursor-not-allowed bg-transparent"
-                      title="You must fill the Total Ticket Amount, before you fill the Ticket Tier"
-                    />
+                    <div onClick={() => setTierWarning(true)} className="absolute inset-0 z-20 cursor-not-allowed bg-transparent" title="You must fill the Total Ticket Amount, before you fill the Ticket Tier" />
                   )}
 
                   {/* 3. VIP TIER */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                    <label className="text-sm font-medium text-neutral-700 pl-4">VIP</label>
+                    <label className="text-sm font-medium text-neutral-700 pl-4">
+                      VIP <span className="text-red-500">*</span>
+                    </label>
                     <div className="sm:col-span-2 flex flex-wrap gap-2.5 items-center text-xs text-neutral-500">
                       <input
                         type="number"
@@ -531,11 +531,11 @@ export default function CreateEventPage() {
                         onChange={(e) => setVipQuota(Number(e.target.value))}
                         className="w-20 border border-neutral-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm disabled:opacity-40 font-semibold text-neutral-900"
                       />
-                      <span>Normal Price</span>
+                      <span>
+                        Normal Price <span className="text-red-500">*</span>
+                      </span>
                       <div className="relative flex items-center">
-                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                          IDR
-                        </span>
+                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
                         <input
                           type="number"
                           min={0}
@@ -547,11 +547,11 @@ export default function CreateEventPage() {
                           className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm disabled:opacity-40"
                         />
                       </div>
-                      <span>Final Price</span>
+                      <span>
+                        Final Price <span className="text-red-500">*</span>
+                      </span>
                       <div className="relative flex items-center">
-                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                          IDR
-                        </span>
+                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
                         <input
                           type="number"
                           min={0}
@@ -568,7 +568,9 @@ export default function CreateEventPage() {
 
                   {/* 4. REGULAR TIER */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                    <label className="text-sm font-medium text-neutral-700 pl-4">Regular</label>
+                    <label className="text-sm font-medium text-neutral-700 pl-4">
+                      Regular <span className="text-red-500">*</span>
+                    </label>
                     <div className="sm:col-span-2 flex flex-wrap gap-2.5 items-center text-xs text-neutral-500">
                       <input
                         type="number"
@@ -581,11 +583,11 @@ export default function CreateEventPage() {
                         onChange={(e) => setRegularQuota(Number(e.target.value))}
                         className="w-20 border border-neutral-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm disabled:opacity-40 font-semibold text-neutral-900"
                       />
-                      <span>Normal Price</span>
+                      <span>
+                        Normal Price <span className="text-red-500">*</span>
+                      </span>
                       <div className="relative flex items-center">
-                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                          IDR
-                        </span>
+                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
                         <input
                           type="number"
                           min={0}
@@ -597,11 +599,11 @@ export default function CreateEventPage() {
                           className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm disabled:opacity-40"
                         />
                       </div>
-                      <span>Final Price</span>
+                      <span>
+                        Final Price <span className="text-red-500">*</span>
+                      </span>
                       <div className="relative flex items-center">
-                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                          IDR
-                        </span>
+                        <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
                         <input
                           type="number"
                           min={0}
@@ -618,9 +620,7 @@ export default function CreateEventPage() {
 
                   {/* Presale Toggle */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                    <label className="text-sm font-medium text-neutral-700 pl-4">
-                      Presale Ticket
-                    </label>
+                    <label className="text-sm font-medium text-neutral-700 pl-4">Presale Ticket</label>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -636,22 +636,12 @@ export default function CreateEventPage() {
                           });
                         }}
                         className={`relative w-10 h-6 rounded-full transition-colors ${
-                          !totalTicket || totalTicket <= 0
-                            ? "opacity-50 cursor-not-allowed bg-neutral-200"
-                            : form.presale?.enabled
-                            ? "bg-[#EA580C] cursor-pointer"
-                            : "bg-neutral-200 cursor-pointer"
+                          !totalTicket || totalTicket <= 0 ? "opacity-50 cursor-not-allowed bg-neutral-200" : form.presale?.enabled ? "bg-[#EA580C] cursor-pointer" : "bg-neutral-200 cursor-pointer"
                         }`}
                       >
-                        <span
-                          className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all ${
-                            form.presale?.enabled ? "left-4.5" : "left-0.5"
-                          }`}
-                        />
+                        <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all ${form.presale?.enabled ? "left-4.5" : "left-0.5"}`} />
                       </button>
-                      <span className="text-xs text-neutral-500 font-medium">
-                        {form.presale?.enabled ? "Aktif" : "Tidak Aktif"}
-                      </span>
+                      <span className="text-xs text-neutral-500 font-medium">{form.presale?.enabled ? "Aktif" : "Tidak Aktif"}</span>
                     </div>
                   </div>
 
@@ -659,9 +649,7 @@ export default function CreateEventPage() {
                   {form.presale?.enabled && (
                     <div className="ml-4 space-y-4 p-4 bg-orange-50/40 border border-orange-200 rounded-xl">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
-                        <label className="text-xs font-semibold text-neutral-700">
-                          Presale Quota & Price
-                        </label>
+                        <label className="text-xs font-semibold text-neutral-700">Presale Quota & Price</label>
                         <div className="sm:col-span-2 flex flex-wrap gap-2.5 items-center text-xs text-neutral-500">
                           <input
                             type="number"
@@ -694,9 +682,7 @@ export default function CreateEventPage() {
                         </div>
                       </div>
                       <div className="grid grid-cols-3 gap-4 items-center">
-                        <label className="text-xs font-semibold text-neutral-700">
-                          Presale Period
-                        </label>
+                        <label className="text-xs font-semibold text-neutral-700">Presale Period</label>
                         <div className="col-span-2 flex items-center gap-2 text-xs text-neutral-500">
                           <input
                             type="date"
@@ -729,23 +715,21 @@ export default function CreateEventPage() {
 
                 {/* Thumbnail Image (Cloudinary Upload) */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
-                  <label className="text-sm font-medium text-neutral-700">Thumbnail Image</label>
+                  <label className="text-sm font-medium text-neutral-700">
+                    Thumbnail Image <span className="text-red-500">*</span>
+                  </label>
                   <div className="sm:col-span-2 space-y-2">
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={handleThumbnailUpload}
+                      onChange={handleThumbnailSelect}
                       className="text-sm text-neutral-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border file:border-neutral-200 file:text-xs file:font-semibold file:bg-neutral-50 file:text-neutral-700 hover:file:bg-neutral-100 file:cursor-pointer cursor-pointer"
                     />
-                    {isUploadingThumb && (
-                      <p className="text-xs text-amber-600 font-medium">
-                        Mengunggah thumbnail ke Cloudinary...
-                      </p>
-                    )}
-                    {form.thumbnailImage && (
-                      <p className="text-xs text-emerald-600 font-medium break-all">
-                        ✅ Terunggah: {form.thumbnailImage}
-                      </p>
+                    {thumbPreview && (
+                      <div className="mt-2 flex items-center gap-3">
+                        <img src={thumbPreview} alt="Thumbnail Preview" className="w-20 h-20 object-cover rounded-xl border border-neutral-200 shadow-xs" />
+                        <p className="text-xs text-neutral-600 font-medium">{thumbFile?.name}</p>
+                      </div>
                     )}
                     <p className="text-xs text-neutral-400">1:1 Aspect Ratio (Cloudinary Hosting)</p>
                   </div>
@@ -753,28 +737,44 @@ export default function CreateEventPage() {
 
                 {/* Cover Images (Cloudinary Upload) */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
-                  <label className="text-sm font-medium text-neutral-700">Images Cover</label>
+                  <label className="text-sm font-medium text-neutral-700">
+                    Images Cover <span className="text-red-500">*</span>
+                  </label>
                   <div className="sm:col-span-2 space-y-2">
                     <input
                       type="file"
                       accept="image/*"
                       multiple
-                      onChange={handleCoversUpload}
+                      onChange={handleCoversSelect}
                       className="text-sm text-neutral-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border file:border-neutral-200 file:text-xs file:font-semibold file:bg-neutral-50 file:text-neutral-700 hover:file:bg-neutral-100 file:cursor-pointer cursor-pointer"
                     />
-                    {isUploadingCovers && (
-                      <p className="text-xs text-amber-600 font-medium">
-                        Mengunggah cover ke Cloudinary...
-                      </p>
-                    )}
-                    {Array.isArray(form.coverImages) && form.coverImages.length > 0 && (
-                      <p className="text-xs text-emerald-600 font-medium">
-                        ✅ {form.coverImages.length} gambar cover terunggah ke Cloudinary
-                      </p>
+                    {coverPreviews.length > 0 && (
+                      <div className="flex gap-2 flex-wrap mt-2">
+                        {coverPreviews.map((src, i) => (
+                          <img key={i} src={src} alt={`Cover Preview ${i + 1}`} className="w-24 h-14 object-cover rounded-lg border border-neutral-200 shadow-xs" />
+                        ))}
+                      </div>
                     )}
                     <p className="text-xs text-neutral-400">2:1 Aspect Ratio (Cloudinary Hosting)</p>
                   </div>
                 </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
+                <label className="text-sm font-medium text-neutral-700 pt-2.5">
+                  Video URL / Teaser
+                </label>
+                <div className="sm:col-span-2 space-y-1.5">
+                  <input 
+                  type="url" 
+                  placeholder="link video MP4"
+                  value={form.videoUrl || ""}
+                  onChange={(e) => handleChange("videoUrl", e.target.value)}
+                  className="w-full border border-neutral-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#bb4d00] bg-neutral-50"
+                  />
+                  <p className="text-xs text-neutral-400">
+                    Please input link video so it can be show in slideshow banner
+                  </p>
+                </div>
+              </div>
               </div>
 
               {/* Bottom Action Bar */}
@@ -782,17 +782,11 @@ export default function CreateEventPage() {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        id="terms"
-                        checked={agreedToTerms}
-                        onChange={(e) => setAgreedToTerms(e.target.checked)}
-                        className="rounded cursor-pointer"
-                      />
+                      <input type="checkbox" id="terms" checked={agreedToTerms} onChange={(e) => setAgreedToTerms(e.target.checked)} className="rounded cursor-pointer" />
                       <label htmlFor="terms" className="text-xs text-neutral-600 cursor-pointer">
                         I agree with{" "}
                         <span className="text-[#BB4D00] underline font-medium">
-                          terms & conditions
+                          terms & conditions <span className="text-red-500">*</span>
                         </span>
                       </label>
                     </div>
