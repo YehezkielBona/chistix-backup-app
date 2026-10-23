@@ -20,6 +20,7 @@ export function calculateEventStatus(
   endDate: Date,
 ): EventStatus {
   if (storedStatus === "DRAFT") return "DRAFT";
+  if (storedStatus === "ENDED") return "ENDED"
 
   const now = new Date();
   if (now < startDate) return "UPCOMING";
