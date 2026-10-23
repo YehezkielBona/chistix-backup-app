@@ -80,6 +80,33 @@ export const createEventSchema = z
       message: "Final price cannot be higher than Normal Price",
       path: ["vipPriceFinal"],
     },
+  )
+  .refine(
+    (d) => {
+      // Jika presale diaktifkan, validasi tanggal presale
+      if (d.presaleQuota > 0 && d.scheduledPublishStart && d.scheduledPublishEnd) {
+        return new Date(d.scheduledPublishEnd) > new Date(d.scheduledPublishStart);
+      }
+      return true;
+    },
+    {
+      message: "Presale end date must be after presale start date",
+      path: ["scheduledPublishEnd"],
+    },
+  )
+  .refine(
+    (d) => {
+      // Periode akhir presale tidak boleh melebihi H-1 sebelum event startDate
+      if (d.presaleQuota > 0 && d.scheduledPublishEnd) {
+        const hMinusOne = new Date(new Date(d.startDate).getTime() - 24 * 60 * 60 * 1000);
+        return new Date(d.scheduledPublishEnd) <= hMinusOne;
+      }
+      return true;
+    },
+    {
+      message: "Presale period must end at or before H-1 (24 hours prior to event start)",
+      path: ["scheduledPublishEnd"],
+    },
   );
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;
