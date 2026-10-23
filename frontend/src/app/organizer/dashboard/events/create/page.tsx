@@ -107,6 +107,12 @@ export default function CreateEventPage() {
   const allocatedQuota =
     vipQuota + regularQuota + (form.presale?.enabled ? presaleQuota : 0);
   const remainingQuota = totalTicket - allocatedQuota;
+  const isQuotaExceeded = 
+  totalTicket <= 0 ||
+  vipQuota > totalTicket ||
+  (Boolean(form.presale?.enabled) && presaleQuota > totalTicket) ||
+  allocatedQuota > totalTicket ||
+  remainingQuota !== 0
 
   const handleChange = (field: keyof EventFormData, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -160,7 +166,9 @@ export default function CreateEventPage() {
       !form.description ||
       !form.province ||
       !form.city ||
-      !form.venueDetail
+      !form.venueDetail ||
+      !form.thumbnailImage ||
+      !form.coverImages || form.coverImages.length === 0
     ) {
       alert("Harap lengkapi semua field yang wajib diisi!");
       return;
@@ -213,8 +221,8 @@ export default function CreateEventPage() {
           ? Number(presaleFinalPrice || presalePrice || regularFinalPrice || regularPrice)
           : 0,
 
-        thumbnailImage: form.thumbnailImage || "/images/img-event-1-sq.jpg",
-        coverImages: form.coverImages || [],
+        thumbnailImage: form.thumbnailImage,
+        coverImages: form.coverImages,
         videoUrl: form.videoUrl || "",
 
         scheduledPublishStart: form.presale?.startDate || "",
@@ -480,7 +488,7 @@ export default function CreateEventPage() {
                         : remainingQuota === 0
                         ? "✅ Kuota pas terbagi!"
                         : remainingQuota < 0
-                        ? `⚠️ Kelebihan ${Math.abs(remainingQuota)} tiket!`
+                        ? `⚠️ Kelebihan ${Math.abs(remainingQuota)} tikets! kuota per kategori tidak boleh melebihi total ticket dan sisa kuota harus tepat 0!`
                         : `Sisa Kuota: ${remainingQuota} tiket`}
                     </span>
                   </div>
@@ -801,7 +809,7 @@ export default function CreateEventPage() {
                     </button>
                     <button
                       type="button"
-                      disabled={isSubmitting || isUploadingThumb || isUploadingCovers}
+                      disabled={isSubmitting || isUploadingThumb || isUploadingCovers || isQuotaExceeded || !agreedToTerms}
                       onClick={() => submitEvent(false)}
                       className="px-6 py-2.5 rounded-full text-sm font-semibold text-white bg-[#EA580C] hover:bg-[#BB4D00] transition-colors cursor-pointer shadow-xs disabled:opacity-50"
                     >

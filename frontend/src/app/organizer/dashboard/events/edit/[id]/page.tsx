@@ -86,6 +86,13 @@ export default function EditEventPage({
   const allocatedQuota =
     vipQuota + regularQuota + (form.presale?.enabled ? presaleQuota : 0);
   const remainingQuota = totalTicket - allocatedQuota;
+  const isQuotaExceeded =
+  totalTicket <= 0 ||
+  vipQuota > totalTicket ||
+  regularQuota > totalTicket ||
+  (Boolean(form.presale?.enabled) && presaleQuota > totalTicket) ||
+  allocatedQuota > totalTicket ||
+  remainingQuota !== 0;
 
   const handleChange = (field: keyof EventFormData, value: unknown) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -247,7 +254,9 @@ export default function EditEventPage({
       !form.description ||
       !form.province ||
       !form.city ||
-      !form.venueDetail
+      !form.venueDetail ||
+      !form.thumbnailImage ||
+      !form.coverImages || form.coverImages.length === 0
     ) {
       setModalFeedback({
         isOpen: true,
@@ -308,7 +317,7 @@ export default function EditEventPage({
           ? Number(presaleFinalPrice || presalePrice || regularFinalPrice || regularPrice)
           : 0,
 
-        thumbnailImage: form.thumbnailImage || "/images/img-event-1-sq.jpg",
+        thumbnailImage: form.thumbnailImage,
         coverImages: form.coverImages || [],
         videoUrl: form.videoUrl || "",
 
@@ -867,8 +876,8 @@ export default function EditEventPage({
                         <button
                           type="button"
                           onClick={handleSaveUpdate}
-                          disabled={isUploadingThumb || isUploadingCovers}
-                          className="px-6 py-2.5 rounded-full text-sm font-semibold text-white bg-[#EA580C] hover:bg-[#BB4D00] transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                          disabled={isUploadingThumb || isUploadingCovers || isQuotaExceeded || !agreedToTerms}
+                          className="px-6 py-2.5 rounded-full text-sm font-semibold text-white bg-[#EA580C] hover:bg-[#BB4D00] transition-colors cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Save Changes
                         </button>
