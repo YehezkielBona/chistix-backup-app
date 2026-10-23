@@ -6,9 +6,10 @@ import { UploadCloud, AlertCircle, Image as ImageIcon } from "lucide-react";
 interface UploadPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void; // Prop tambahan untuk mengubah status transaksi
 }
 
-export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentModalProps) {
+export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: UploadPaymentModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorType, setErrorType] = useState<"invalid_type" | "too_large" | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -83,7 +84,7 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
         <div className="rounded-2xl bg-neutral-100/70 p-4 mb-5 text-xs">
           <div className="flex items-center justify-between font-bold text-neutral-900 mb-2">
             <span>Resonance Soundfest 2026: Intimate Live Performance</span>
-            <span className="text-red-500 text-[11px] font-semibold">01: 59: 59</span>
+            <span className="text-red-500 text-[11px] font-semibold">01:59:59</span>
           </div>
 
           <div className="space-y-1.5 text-neutral-600">
@@ -97,7 +98,7 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
             </div>
             <div className="flex justify-between pt-1 font-bold text-neutral-900">
               <span>Total Pay</span>
-              <span>Rp. 430.000.00</span>
+              <span>Rp. 430.000</span>
             </div>
           </div>
         </div>
@@ -109,7 +110,7 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/jpeg, image/png"
+            accept="image/jpeg, image/png, image/jpg"
             className="hidden"
           />
 
@@ -119,13 +120,13 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
               <p className="text-xs font-bold text-red-600 mb-1">
                 {errorType === "invalid_type"
                   ? "Only JPG or PNG files are allowed"
-                  : "File is to large. The maximum size is 3MB"}
+                  : "File is too large. The maximum size is 3MB"}
               </p>
               <p className="text-[11px] text-neutral-600 mb-4">{selectedFile?.name}</p>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-700 shadow-xs hover:bg-neutral-50 transition-colors"
+                className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-700 shadow-xs hover:bg-neutral-50 transition-colors cursor-pointer"
               >
                 Choose another file
               </button>
@@ -148,7 +149,7 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
                 <button
                   type="button"
                   onClick={handleRemoveFile}
-                  className="rounded-md bg-red-100/80 px-2.5 py-1 text-[10px] font-semibold text-neutral-700 hover:bg-red-200/80 transition-colors"
+                  className="rounded-md bg-red-100/80 px-2.5 py-1 text-[10px] font-semibold text-neutral-700 hover:bg-red-200/80 transition-colors cursor-pointer"
                 >
                   Remove
                 </button>
@@ -158,7 +159,7 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
                     const url = URL.createObjectURL(selectedFile);
                     window.open(url, "_blank");
                   }}
-                  className="rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-neutral-600 hover:bg-neutral-50 transition-colors"
+                  className="rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-neutral-600 hover:bg-neutral-50 transition-colors cursor-pointer"
                 >
                   View image
                 </button>
@@ -182,7 +183,7 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="rounded-lg border border-neutral-200 bg-white px-5 py-2 text-xs font-semibold text-neutral-600 shadow-xs hover:bg-neutral-50 transition-colors mb-3"
+                className="rounded-lg border border-neutral-200 bg-white px-5 py-2 text-xs font-semibold text-neutral-600 shadow-xs hover:bg-neutral-50 transition-colors mb-3 cursor-pointer"
               >
                 Choose file
               </button>
@@ -198,7 +199,7 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
               handleRemoveFile();
               onClose();
             }}
-            className="rounded-xl bg-[#1E293B] px-5 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition-colors"
+            className="rounded-xl bg-[#1E293B] px-5 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -206,11 +207,13 @@ export default function UploadPaymentModal({ isOpen, onClose }: UploadPaymentMod
             type="button"
             disabled={!selectedFile || !!errorType}
             onClick={() => {
-              alert("Proof uploaded successfully!");
+              if (onSuccess) {
+                onSuccess(); // Mengubah status ke "Waiting Approval"
+              }
               handleRemoveFile();
               onClose();
             }}
-            className="rounded-xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             Send Proof
           </button>

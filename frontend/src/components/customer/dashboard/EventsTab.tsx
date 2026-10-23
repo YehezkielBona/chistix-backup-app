@@ -153,7 +153,7 @@ export default function EventsTab() {
               <th className="pb-3 font-medium text-center px-2">Jumlah</th>
               <th className="pb-3 font-medium text-center px-2">Date & Time</th>
               <th className="pb-3 font-medium text-center px-2">Location</th>
-              <th className="pb-3 font-medium text-right pr-2">Aksi</th>
+              <th className="pb-3 font-medium text-center px-2">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-50 text-neutral-700">
@@ -177,7 +177,7 @@ export default function EventsTab() {
                   <td className="py-4 text-center px-2 text-neutral-600 break-words">
                     {ticket.location}
                   </td>
-                  <td className="py-4 text-right">
+                  <td className="py-4 text-center px-2">
                     <button
                       type="button"
                       disabled={isDownloading && activeDownloadId === ticket.id}
@@ -353,7 +353,7 @@ export default function EventsTab() {
                   }}
                 >
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=TIX-${t.id}`}
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${t.id}`}
                     alt="QR Code"
                     width={160}
                     height={160}

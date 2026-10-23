@@ -2,14 +2,67 @@
 
 import React, { useState } from "react";
 import UploadPaymentModal from "./UploadPaymentModal";
-import { TransactionItem } from "@/app/customer/dashboard/page";
+
+interface TransactionItem {
+  id: string | number;
+  title: string;
+  ticketType: string;
+  qty: number;
+  status: "Waiting Payment" | "Waiting Approval" | "Done" | "Canceled";
+  price: string;
+}
 
 interface TransactionsTabProps {
   transactions?: TransactionItem[];
 }
 
-export default function TransactionsTab({ transactions = [] }: TransactionsTabProps) {
+export default function TransactionsTab({ transactions: initialTransactions = [] }: TransactionsTabProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTrxId, setSelectedTrxId] = useState<string | number | null>(null);
+
+  // Menggunakan state lokal agar status bisa di-update secara real-time
+  const [transactions, setTransactions] = useState<TransactionItem[]>(() => {
+    if (initialTransactions.length > 0) return initialTransactions;
+    return [
+      {
+        id: 1,
+        title: "Resonance Soundfest 2026: Intimate Live Performance",
+        ticketType: "VIP",
+        qty: 1,
+        status: "Waiting Payment",
+        price: "Rp. 550.000",
+      },
+      {
+        id: 2,
+        title: "Jazz evening at the Park",
+        ticketType: "Regular",
+        qty: 2,
+        status: "Done",
+        price: "Rp. 300.000",
+      },
+      {
+        id: 3,
+        title: "Indie Wave Fest: Sunset Beach Session",
+        ticketType: "Presale",
+        qty: 1,
+        status: "Canceled",
+        price: "Rp. 550.000",
+      },
+    ];
+  });
+
+  // Fungsi yang dipanggil otomatis setelah berhasil klik "Send Proof" di modal
+  const handleUploadSuccess = () => {
+    if (selectedTrxId !== null) {
+      setTransactions((prev) =>
+        prev.map((trx) =>
+          trx.id === selectedTrxId ? { ...trx, status: "Waiting Approval" } : trx
+        )
+      );
+    }
+    setIsModalOpen(false);
+    setSelectedTrxId(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -49,6 +102,8 @@ export default function TransactionsTab({ transactions = [] }: TransactionsTabPr
                     className={`py-4 text-center px-1 font-semibold whitespace-nowrap ${
                       trx.status === "Waiting Payment"
                         ? "text-amber-500"
+                        : trx.status === "Waiting Approval"
+                        ? "text-sky-600"
                         : trx.status === "Done"
                         ? "text-emerald-600"
                         : "text-red-500"
@@ -57,13 +112,16 @@ export default function TransactionsTab({ transactions = [] }: TransactionsTabPr
                     {trx.status}
                   </td>
                   <td className="py-4 text-center px-1 font-semibold text-neutral-900 whitespace-nowrap">
-                    {trx.price}
+                    {trx.price?.replace(",00", "")}
                   </td>
                   <td className="py-4 text-center px-1">
                     {trx.status === "Waiting Payment" ? (
                       <button
                         type="button"
-                        onClick={() => setIsModalOpen(true)}
+                        onClick={() => {
+                          setSelectedTrxId(trx.id);
+                          setIsModalOpen(true);
+                        }}
                         className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors cursor-pointer active:scale-95 inline-block whitespace-nowrap"
                       >
                         Upload Proof
@@ -79,7 +137,15 @@ export default function TransactionsTab({ transactions = [] }: TransactionsTabPr
         </table>
       </div>
 
-      <UploadPaymentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      {/* Sambungkan modal dengan fungsi handleUploadSuccess */}
+      <UploadPaymentModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedTrxId(null);
+        }}
+        onSuccess={handleUploadSuccess}
+      />
     </div>
   );
 }
