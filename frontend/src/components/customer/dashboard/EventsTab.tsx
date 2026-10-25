@@ -3,7 +3,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Search, Clock } from "lucide-react";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+// [LAMA] import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro"; // [BARU] paket yang terdaftar di package.json
+import { QRCodeCanvas } from "qrcode.react"; // [BARU] QR dibuat lokal, tanpa layanan luar
+import { apiFetch } from "@/lib/api"; // [BARU]
+import { authClient } from "@/lib/auth-client"; // [BARU] nama customer di tiket
+import type { ApiTransaction, Paged } from "@/types/api"; // [BARU]
 
 interface TicketItem {
   id: string;
@@ -15,40 +20,70 @@ interface TicketItem {
   customerName?: string;
   totalAmount?: number;
   status?: "Done" | "Waiting Approval";
+  eTickets: { ticketCode: string; qrToken: string; isAttended: boolean }[]; // [BARU] tiket asli
+}
+
+// [BARU] ubah transaksi dari backend menjadi baris tabel
+function toTicketItem(trx: ApiTransaction, customerName?: string): TicketItem {
+  return {
+    id: trx.id,
+    eventName: trx.event.title,
+    ticketType: trx.ticketType ?? "E-Ticket", // TODO schema v2: trx.ticketType selalu terisi
+    qty: trx.quantity,
+    dateTime: new Date(trx.event.startDate).toLocaleString("id-ID", {
+      day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta",
+    }),
+    location: `${trx.event.venueDetail}, ${trx.event.cityName}`,
+    customerName,
+    totalAmount: trx.totalPrice,
+    status: "Done",
+    eTickets: trx.eTickets.map((t) => ({ ticketCode: t.ticketCode, qrToken: t.qrToken, isAttended: t.isAttended })),
+  };
 }
 
 export default function EventsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
   const [activeDownloadId, setActiveDownloadId] = useState<string | null>(null);
+  const { data: session } = authClient.useSession(); // [BARU]
 
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [pdfTicketsData, setPdfTicketsData] = useState<{
     item: TicketItem;
-    tickets: { id: string }[];
+    // [LAMA] tickets: { id: string }[];
+    tickets: { id: string; qr: string }[]; // [BARU] id = ticketCode, qr = qrToken
   } | null>(null);
 
   const [tickets, setTickets] = useState<TicketItem[]>([]);
+  const [loading, setLoading] = useState(true); // [BARU]
+  const [error, setError] = useState(""); // [BARU]
 
   useEffect(() => {
-    localStorage.removeItem("chistix_my_tickets");
-    
-    const approvedTickets: TicketItem[] = [
-      {
-        id: "TIX-8891",
-        eventName: "Night Symphony: Classic Meets Rock",
-        ticketType: "Presale",
-        qty: 3,
-        dateTime: "19 Desember 2026 pukul 19:00",
-        location: "North Jakarta, Jakarta",
-        customerName: "mutiara",
-        totalAmount: 166500,
-        status: "Done",
-      },
-    ];
+    // [LAMA] data dummy
+    // localStorage.removeItem("chistix_my_tickets");
+    //
+    // const approvedTickets: TicketItem[] = [
+    //   {
+    //     id: "TIX-8891",
+    //     eventName: "Night Symphony: Classic Meets Rock",
+    //     ticketType: "Presale",
+    //     qty: 3,
+    //     dateTime: "19 Desember 2026 pukul 19:00",
+    //     location: "North Jakarta, Jakarta",
+    //     customerName: "mutiara",
+    //     totalAmount: 166500,
+    //     status: "Done",
+    //   },
+    // ];
+    //
+    // setTickets(approvedTickets);
 
-    setTickets(approvedTickets);
-  }, []);
+    // [BARU] hanya transaksi DONE (sudah disetujui organizer) yang punya e-ticket
+    apiFetch<Paged<ApiTransaction>>("/api/transactions?status=DONE&limit=50")
+      .then((r) => setTickets(r.data.map((trx) => toTicketItem(trx, session?.user?.name))))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [session?.user?.name]);
 
   const filteredTickets = tickets.filter(
     (item) =>
@@ -63,9 +98,12 @@ export default function EventsTab() {
     setActiveDownloadId(item.id);
     setIsDownloading(true);
 
-    const generatedTickets = Array.from({ length: item.qty }, () => ({
-      id: Math.random().toString(36).substring(2, 10).toUpperCase(),
-    }));
+    // [LAMA] id tiket dibuat acak di browser
+    // const generatedTickets = Array.from({ length: item.qty }, () => ({
+    //   id: Math.random().toString(36).substring(2, 10).toUpperCase(),
+    // }));
+    // [BARU] tiket asli dari database: 1 tiket = 1 halaman PDF = 1 QR unik
+    const generatedTickets = item.eTickets.map((t) => ({ id: t.ticketCode, qr: t.qrToken }));
 
     setPdfTicketsData({
       item,
@@ -144,6 +182,9 @@ export default function EventsTab() {
         </div>
       </div>
 
+      {/* [BARU] pesan error */}
+      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
+
       <div className="w-full">
         <table className="w-full text-left text-xs table-fixed">
           <thead className="border-b border-neutral-100 text-neutral-400">
@@ -157,7 +198,12 @@ export default function EventsTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-50 text-neutral-700">
-            {filteredTickets.length > 0 ? (
+            {/* [BARU] loading state */}
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-neutral-400">Memuat tiket...</td>
+              </tr>
+            ) : filteredTickets.length > 0 ? (
               filteredTickets.map((ticket) => (
                 <tr key={ticket.id}>
                   <td className="py-4 font-semibold text-neutral-900 pr-2 break-words text-left">
@@ -180,7 +226,8 @@ export default function EventsTab() {
                   <td className="py-4 text-center px-2">
                     <button
                       type="button"
-                      disabled={isDownloading && activeDownloadId === ticket.id}
+                      // [LAMA] disabled={isDownloading && activeDownloadId === ticket.id}
+                      disabled={(isDownloading && activeDownloadId === ticket.id) || ticket.eTickets.length === 0}
                       onClick={() => handlePrintTicket(ticket)}
                       className="rounded-lg bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 px-3 py-1.5 text-xs font-semibold text-white transition-colors cursor-pointer active:scale-95 disabled:cursor-not-allowed inline-block"
                     >
@@ -288,7 +335,8 @@ export default function EventsTab() {
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "#475569" }}>Customer</span>
                     <span style={{ fontWeight: "700", color: "#000000" }}>
-                      {pdfTicketsData.item.customerName || "mutiara"}
+                      {/* [LAMA] {pdfTicketsData.item.customerName || "mutiara"} */}
+                      {pdfTicketsData.item.customerName || "-"}
                     </span>
                   </div>
 
@@ -308,7 +356,7 @@ export default function EventsTab() {
 
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "#475569" }}>Location</span>
-                    <span style={{ fontWeight: "700", color: "#000000" }}>
+                    <span style={{ fontWeight: "700", color: "#000000", textAlign: "right", maxWidth: "220px" }}>
                       {pdfTicketsData.item.location}
                     </span>
                   </div>
@@ -323,7 +371,8 @@ export default function EventsTab() {
                   >
                     <span style={{ color: "#475569" }}>Total Amount</span>
                     <span style={{ fontWeight: "700", color: "#000000" }}>
-                      {formatRupiah(pdfTicketsData.item.totalAmount || 166500)}
+                      {/* [LAMA] {formatRupiah(pdfTicketsData.item.totalAmount || 166500)} */}
+                      {formatRupiah(pdfTicketsData.item.totalAmount ?? 0)}
                     </span>
                   </div>
 
@@ -352,19 +401,27 @@ export default function EventsTab() {
                     alignItems: "center",
                   }}
                 >
+                  {/* [LAMA] QR dari layanan luar, isinya id acak
                   <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${t.id}`}
                     alt="QR Code"
                     width={160}
                     height={160}
+                    style={{ border: "1px solid #e2e8f0", borderRadius: "12px", padding: "8px", background: "#ffffff" }}
+                    crossOrigin="anonymous"
+                  />
+                  */}
+                  {/* [BARU] QR dibuat di browser, isinya qrToken asli yang dicek scanner */}
+                  <div
                     style={{
                       border: "1px solid #e2e8f0",
                       borderRadius: "12px",
                       padding: "8px",
                       background: "#ffffff",
                     }}
-                    crossOrigin="anonymous"
-                  />
+                  >
+                    <QRCodeCanvas value={t.qr} size={160} level="H" />
+                  </div>
                   <p
                     style={{
                       fontSize: "10px",

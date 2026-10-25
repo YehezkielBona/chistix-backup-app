@@ -2,23 +2,64 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
-import { MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin, ChevronLeft, ChevronRight, Star } from 'lucide-react'; // [BARU] + Star
 import { EventItem } from '@/data/events';
+import type { ApiEvent } from '@/types/api'; // [BARU]
 
 interface EventHeaderInfoProps {
   event: EventItem;
+  apiEvent?: ApiEvent; // [BARU] data lengkap dari backend (venue, organizer, rating)
 }
 
-export default function EventHeaderInfo({ event }: EventHeaderInfoProps) {
-  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-    event.location
-  )}`;
+// [BARU] label kategori (enum backend -> teks di UI)
+const CATEGORY_LABEL: Record<string, string> = {
+  MUSIC: 'Music',
+  SEMINAR: 'Seminar',
+  TALKSHOW: 'Talkshow',
+  SPORTS: 'Sports',
+  EXHIBITION: 'Exhibition',
+};
+
+// [BARU] format tanggal Indonesia, zona WIB
+const formatDateTime = (iso: string) =>
+  new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Jakarta',
+  }).format(new Date(iso));
+
+const formatTime = (iso: string) =>
+  new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }).format(new Date(iso));
+
+// [LAMA] export default function EventHeaderInfo({ event }: EventHeaderInfoProps) {
+export default function EventHeaderInfo({ event, apiEvent }: EventHeaderInfoProps) {
+  // [BARU] lokasi lengkap: nama venue + kota + provinsi
+  const fullLocation = apiEvent
+    ? `${apiEvent.venueDetail}, ${apiEvent.cityName}, ${apiEvent.provinceName}`
+    : event.location;
+
+  // [LAMA]
+  // const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+  //   event.location
+  // )}`;
+  // [BARU] pakai link maps dari organizer kalau ada, kalau tidak cari berdasarkan lokasi lengkap
+  const googleMapsUrl =
+    (apiEvent as (ApiEvent & { venueMaps?: string | null }) | undefined)?.venueMaps ||
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullLocation)}`;
 
   // Daftar gambar carousel poster event
-  const posterImages = [
-    event.landscapeImage || event.image,
-    event.image,
-  ].filter(Boolean) as string[];
+  // [LAMA]
+  // const posterImages = [
+  //   event.landscapeImage || event.image,
+  //   event.image,
+  // ].filter(Boolean) as string[];
+  // [BARU] semua cover image dari organizer + thumbnail, tanpa duplikat
+  const posterImages = Array.from(
+    new Set([...(apiEvent?.coverImages ?? []), event.landscapeImage, event.image].filter(Boolean) as string[]),
+  );
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
@@ -41,6 +82,11 @@ export default function EventHeaderInfo({ event }: EventHeaderInfoProps) {
   const prevImage = () => {
     setCurrentImageIndex((prev) => (prev === 0 ? posterImages.length - 1 : prev - 1));
   };
+
+  // [BARU] tanggal: "19 Desember 2026 pukul 19.00 - 23.00"
+  const dateLabel = apiEvent
+    ? `${formatDateTime(apiEvent.startDate)} - ${formatTime(apiEvent.endDate)} WIB`
+    : event.date || '19 Desember 2026';
 
   return (
     <div className="space-y-4 w-full">
@@ -107,13 +153,16 @@ export default function EventHeaderInfo({ event }: EventHeaderInfoProps) {
       <div className="bg-white rounded-xl border border-gray-200/80 p-4 divide-y divide-gray-100 text-xs w-full max-w-[738px]">
         <div className="grid grid-cols-12 py-2">
           <span className="col-span-3 font-semibold text-gray-500">Date</span>
-          <span className="col-span-9 font-bold text-gray-800">{event.date || '19 Desember 2026'}</span>
+          {/* [LAMA] {event.date || '19 Desember 2026'} */}
+          <span className="col-span-9 font-bold text-gray-800">{dateLabel}</span>
         </div>
 
         <div className="grid grid-cols-12 py-2 items-center">
           <span className="col-span-3 font-semibold text-gray-500">Location</span>
-          <div className="col-span-9 flex items-center gap-2">
-            <span className="font-bold text-amber-700">{event.location}</span>
+          {/* [BARU] flex-wrap supaya rapi di layar HP */}
+          <div className="col-span-9 flex flex-wrap items-center gap-2">
+            {/* [LAMA] {event.location} */}
+            <span className="font-bold text-amber-700">{fullLocation}</span>
             <a
               href={googleMapsUrl}
               target="_blank"
@@ -126,14 +175,30 @@ export default function EventHeaderInfo({ event }: EventHeaderInfoProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 py-2">
+        <div className="grid grid-cols-12 py-2 items-center">
           <span className="col-span-3 font-semibold text-gray-500">Organizers</span>
-          <span className="col-span-9 font-bold text-amber-600">Nusantara Orchestra Productions</span>
+          {/* [LAMA] <span className="col-span-9 font-bold text-amber-600">Nusantara Orchestra Productions</span> */}
+          {/* [BARU] nama organizer asli + rata-rata rating (requirement: rating di profil organizer) */}
+          <div className="col-span-9 flex flex-wrap items-center gap-2">
+            <span className="font-bold text-amber-600">
+              {apiEvent?.organizer?.name || event.organizer || 'Organizer'}
+            </span>
+            {apiEvent?.organizerRating && apiEvent.organizerRating.count > 0 && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-gray-600">
+                <Star size={11} className="text-amber-400" fill="currentColor" />
+                <span className="font-bold text-gray-800">{apiEvent.organizerRating.average.toFixed(1)}</span>
+                ({apiEvent.organizerRating.count} review)
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-12 py-2">
           <span className="col-span-3 font-semibold text-gray-500">Category</span>
-          <span className="col-span-9 font-bold text-amber-600">{event.category || 'Concert'}</span>
+          {/* [LAMA] {event.category || 'Concert'} */}
+          <span className="col-span-9 font-bold text-amber-600">
+            {CATEGORY_LABEL[event.category ?? ''] || event.category || 'Concert'}
+          </span>
         </div>
       </div>
     </div>

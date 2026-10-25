@@ -69,3 +69,36 @@ export async function requireCustomer(req: Request, res: Response, next: NextFun
     next(err);
   }
 }
+
+// ============================================================
+// BARU: requireRole
+// Beda dengan 2 fungsi di atas: request TANPA login langsung ditolak (401).
+// Dipakai di route transaksi, review, dan overview customer.
+// Contoh: router.use(requireRole("CUSTOMER"))
+// ============================================================
+type AppRole = "CUSTOMER" | "ORGANIZER";
+
+export function requireRole(...roles: AppRole[]) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+
+      // 1. Belum login -> 401 Unauthorized
+      if (!session?.user) {
+        return res.status(401).json({ success: false, message: "Silakan login terlebih dahulu" });
+      }
+
+      // 2. Sudah login tapi role tidak sesuai -> 403 Forbidden
+      const role = String((session.user as { role?: string }).role ?? "CUSTOMER").toUpperCase();
+      if (!roles.includes(role as AppRole)) {
+        return res.status(403).json({ success: false, message: "Akses ditolak untuk role ini" });
+      }
+
+      // 3. Lolos: simpan data user untuk dipakai controller (req.user.id, dst.)
+      req.user = { id: session.user.id, email: session.user.email, name: session.user.name, role };
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}

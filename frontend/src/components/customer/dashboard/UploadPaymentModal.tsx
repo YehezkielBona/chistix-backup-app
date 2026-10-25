@@ -1,35 +1,70 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+// [LAMA] import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react"; // [BARU] + useEffect (countdown)
 import { UploadCloud, AlertCircle, Image as ImageIcon } from "lucide-react";
+import { apiFetch } from "@/lib/api"; // [BARU]
+import type { ApiTransaction } from "@/types/api"; // [BARU]
 
 interface UploadPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void; // Prop tambahan untuk mengubah status transaksi
+  transaction?: ApiTransaction | null; // [BARU] transaksi yang bukti bayarnya diupload
 }
 
-export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: UploadPaymentModalProps) {
+// [BARU] aturan file, harus sama dengan Multer di backend
+const VALID_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_SIZE = 2 * 1024 * 1024; // 2 MB
+
+const formatRupiah = (n: number) => "Rp " + n.toLocaleString("id-ID");
+
+// [BARU] countdown sisa waktu bayar
+function useCountdown(deadline?: string) {
+  const [left, setLeft] = useState(0);
+  useEffect(() => {
+    if (!deadline) return;
+    const tick = () => setLeft(Math.max(0, Math.floor((Date.parse(deadline) - Date.now()) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [deadline]);
+  return [Math.floor(left / 3600), Math.floor((left % 3600) / 60), left % 60]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+}
+
+export default function UploadPaymentModal({ isOpen, onClose, onSuccess, transaction }: UploadPaymentModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorType, setErrorType] = useState<"invalid_type" | "too_large" | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false); // [BARU]
+  const [serverError, setServerError] = useState(""); // [BARU] pesan error dari backend
+
+  // [BARU] countdown hanya untuk transaksi yang belum dibayar
+  const countdown = useCountdown(
+    transaction?.status === "WAITING_PAYMENT" ? transaction.paymentDeadline : undefined,
+  );
 
   if (!isOpen) return null;
 
   const validateAndSetFile = (file: File) => {
     setErrorType(null);
     setSelectedFile(null);
+    setServerError(""); // [BARU]
 
-    const validTypes = ["image/jpeg", "image/png", "image/jpg"];
-    if (!validTypes.includes(file.type)) {
+    // [LAMA] const validTypes = ["image/jpeg", "image/png", "image/jpg"];
+    // [LAMA] if (!validTypes.includes(file.type)) {
+    if (!VALID_TYPES.includes(file.type)) {
       setSelectedFile(file);
       setErrorType("invalid_type");
       return;
     }
 
-    const maxSizeInBytes = 3 * 1024 * 1024;
-    if (file.size > maxSizeInBytes) {
+    // [LAMA] const maxSizeInBytes = 3 * 1024 * 1024;
+    // [LAMA] if (file.size > maxSizeInBytes) {
+    if (file.size > MAX_SIZE) {
       setSelectedFile(file);
       setErrorType("too_large");
       return;
@@ -64,6 +99,7 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: Uploa
   const handleRemoveFile = () => {
     setSelectedFile(null);
     setErrorType(null);
+    setServerError(""); // [BARU]
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -76,6 +112,25 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: Uploa
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  // [BARU] kirim file ke backend (Multer -> Cloudinary)
+  const handleSubmit = async () => {
+    if (!selectedFile || errorType || !transaction) return;
+    setUploading(true);
+    setServerError("");
+    try {
+      const form = new FormData();
+      form.append("paymentProof", selectedFile); // nama field harus sama dengan multer .single("paymentProof")
+      await apiFetch(`/api/transactions/${transaction.id}/payment-proof`, { method: "POST", body: form });
+      handleRemoveFile();
+      if (onSuccess) onSuccess(); // TransactionsTab mengambil ulang data
+      onClose();
+    } catch (e) {
+      setServerError((e as Error).message); // contoh: "Batas waktu 2 jam sudah lewat"
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
       <div className="w-full max-w-[500px] overflow-hidden rounded-2xl bg-white p-6 shadow-xl transition-all">
@@ -83,22 +138,34 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: Uploa
 
         <div className="rounded-2xl bg-neutral-100/70 p-4 mb-5 text-xs">
           <div className="flex items-center justify-between font-bold text-neutral-900 mb-2">
-            <span>Resonance Soundfest 2026: Intimate Live Performance</span>
-            <span className="text-red-500 text-[11px] font-semibold">01:59:59</span>
+            {/* [LAMA] <span>Resonance Soundfest 2026: Intimate Live Performance</span> */}
+            <span>{transaction?.event.title ?? "-"}</span>
+            {/* [LAMA] <span className="text-red-500 text-[11px] font-semibold">01:59:59</span> */}
+            {transaction?.status === "WAITING_PAYMENT" && (
+              <span className="text-red-500 text-[11px] font-semibold">{countdown}</span>
+            )}
           </div>
 
           <div className="space-y-1.5 text-neutral-600">
             <div className="flex justify-between">
               <span>Order</span>
-              <span className="font-semibold text-neutral-800">#TRX-1030</span>
+              {/* [LAMA] #TRX-1030 */}
+              <span className="font-semibold text-neutral-800">
+                #{transaction ? transaction.id.slice(0, 8).toUpperCase() : "-"}
+              </span>
             </div>
             <div className="flex justify-between">
               <span>Ticket</span>
-              <span className="font-semibold text-neutral-800">Presale VIP x 1</span>
+              {/* [LAMA] Presale VIP x 1 */}
+              {/* TODO schema v2: tambahkan transaction.ticketType di depan jumlah */}
+              <span className="font-semibold text-neutral-800">
+                {transaction?.ticketType ? `${transaction.ticketType} ` : ""}x {transaction?.quantity ?? 0}
+              </span>
             </div>
             <div className="flex justify-between pt-1 font-bold text-neutral-900">
               <span>Total Pay</span>
-              <span>Rp. 430.000</span>
+              {/* [LAMA] Rp. 430.000 */}
+              <span>{formatRupiah(transaction?.totalPrice ?? 0)}</span>
             </div>
           </div>
         </div>
@@ -110,7 +177,8 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: Uploa
             type="file"
             ref={fileInputRef}
             onChange={handleFileChange}
-            accept="image/jpeg, image/png, image/jpg"
+            // [LAMA] accept="image/jpeg, image/png, image/jpg"
+            accept="image/jpeg, image/png, image/webp"
             className="hidden"
           />
 
@@ -118,9 +186,10 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: Uploa
             <div className="flex flex-col items-center justify-center rounded-2xl border border-red-100 bg-red-50/80 p-6 text-center">
               <AlertCircle className="h-7 w-7 text-red-500 mb-2" />
               <p className="text-xs font-bold text-red-600 mb-1">
+                {/* [LAMA] "Only JPG or PNG files are allowed" : "File is too large. The maximum size is 3MB" */}
                 {errorType === "invalid_type"
-                  ? "Only JPG or PNG files are allowed"
-                  : "File is too large. The maximum size is 3MB"}
+                  ? "Only JPG, PNG, or WEBP files are allowed"
+                  : "File is too large. The maximum size is 2MB"}
               </p>
               <p className="text-[11px] text-neutral-600 mb-4">{selectedFile?.name}</p>
               <button
@@ -187,35 +256,39 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess }: Uploa
               >
                 Choose file
               </button>
-              <p className="text-[11px] text-neutral-400">JPG or PNG max 3 MB</p>
+              {/* [LAMA] JPG or PNG max 3 MB */}
+              <p className="text-[11px] text-neutral-400">JPG, PNG, or WEBP max 2 MB</p>
             </div>
+          )}
+
+          {/* [BARU] pesan error dari server */}
+          {serverError && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-600">{serverError}</p>
           )}
         </div>
 
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
+            disabled={uploading} // [BARU]
             onClick={() => {
               handleRemoveFile();
               onClose();
             }}
-            className="rounded-xl bg-[#1E293B] px-5 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+            className="rounded-xl bg-[#1E293B] px-5 py-2.5 text-xs font-bold text-white hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="button"
-            disabled={!selectedFile || !!errorType}
-            onClick={() => {
-              if (onSuccess) {
-                onSuccess(); // Mengubah status ke "Waiting Approval"
-              }
-              handleRemoveFile();
-              onClose();
-            }}
+            // [LAMA] disabled={!selectedFile || !!errorType}
+            disabled={!selectedFile || !!errorType || uploading || !transaction}
+            // [LAMA] onClick={() => { if (onSuccess) { onSuccess(); } handleRemoveFile(); onClose(); }}
+            onClick={handleSubmit}
             className="rounded-xl bg-amber-500 px-5 py-2.5 text-xs font-bold text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            Send Proof
+            {/* [LAMA] Send Proof */}
+            {uploading ? "Uploading..." : "Send Proof"}
           </button>
         </div>
       </div>

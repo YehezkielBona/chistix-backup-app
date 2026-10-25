@@ -1,7 +1,22 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { CATEGORIES, LOCATIONS } from '@/data/events';
+// [LAMA] daftar dari data dummy. Nilainya ('Concert', 'North Jakarta, Jakarta')
+// tidak cocok dengan data di database, jadi diganti EVENT_CATEGORIES & CITY_OPTIONS di bawah.
+// import { CATEGORIES, LOCATIONS } from '@/data/events';
+
+// [BARU] value = enum EventCategoryEnum di schema.prisma, label = teks di UI
+const EVENT_CATEGORIES = [
+  { value: 'MUSIC', label: 'Music' },
+  { value: 'SEMINAR', label: 'Seminar' },
+  { value: 'TALKSHOW', label: 'Talkshow' },
+  { value: 'SPORTS', label: 'Sports' },
+  { value: 'EXHIBITION', label: 'Exhibition' },
+];
+
+// [BARU] kota populer. Dicocokkan dengan "contains" di backend,
+// jadi "Jakarta" juga cocok dengan "Kota Jakarta Selatan"
+const CITY_OPTIONS = ['Jakarta', 'Bandung', 'Surabaya', 'Yogyakarta', 'Denpasar', 'Medan'];
 
 interface SidebarPortalProps {
   onFilterChange: (filters: {
@@ -18,6 +33,7 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
   const [selectedLocation, setSelectedLocation] = useState('');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [priceError, setPriceError] = useState(''); // [BARU]
 
   // Daftar provinsi dari API Emsifa (diambil lewat Backend Express: GET /api/regions/provinces)
   const [emsifaProvinces, setEmsifaProvinces] = useState<{ id: string; name: string }[]>([]);
@@ -32,6 +48,7 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
       })
       .catch(() => {
         // Fallback ke LOCATIONS statis jika offline
+        // [BARU] sekarang fallback-nya CITY_OPTIONS
       });
   }, []);
 
@@ -50,6 +67,13 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
 
   // Handler Tombol Save
   const handleSave = () => {
+    // [BARU] harga minimum tidak boleh lebih besar dari maksimum
+    if (minPrice && maxPrice && Number(minPrice) > Number(maxPrice)) {
+      setPriceError('Harga minimum tidak boleh lebih besar dari harga maksimum');
+      return;
+    }
+    setPriceError('');
+
     onFilterChange({
       category: selectedCategory,
       location: selectedLocation,
@@ -64,6 +88,7 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
     setSelectedLocation('');
     setMinPrice('');
     setMaxPrice('');
+    setPriceError(''); // [BARU]
     onReset();
   };
 
@@ -81,9 +106,17 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
             className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 focus:outline-none focus:border-amber-500 cursor-pointer pr-8 leading-tight"
           >
             <option value="">All Categories</option>
+            {/* [LAMA]
             {CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>
                 {cat}
+              </option>
+            ))}
+            */}
+            {/* [BARU] tampilkan label, kirim value enum ke backend */}
+            {EVENT_CATEGORIES.map((cat) => (
+              <option key={cat.value} value={cat.value}>
+                {cat.label}
               </option>
             ))}
           </select>
@@ -107,11 +140,21 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
             className="w-full appearance-none bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-700 focus:outline-none focus:border-amber-500 cursor-pointer pr-8 leading-tight"
           >
             <option value="">All Locations</option>
+            {/* [LAMA]
             {LOCATIONS.map((loc) => (
               <option key={loc} value={loc}>
                 {loc}
               </option>
             ))}
+            */}
+            {/* [BARU] kota populer */}
+            <optgroup label="Kota populer">
+              {CITY_OPTIONS.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </optgroup>
             {emsifaProvinces.length > 0 && (
               <optgroup label="Provinsi (Emsifa Indonesia)">
                 {emsifaProvinces.map((prov) => (
@@ -154,6 +197,8 @@ export default function SidebarPortal({ onFilterChange, onReset }: SidebarPortal
             onChange={(e) => handlePriceChange(e.target.value, setMaxPrice)}
             className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-medium placeholder-gray-400 text-gray-700 focus:outline-none focus:border-amber-500"
           />
+          {/* [BARU] pesan validasi harga */}
+          {priceError && <p className="text-[11px] text-red-600">{priceError}</p>}
         </div>
       </div>
 

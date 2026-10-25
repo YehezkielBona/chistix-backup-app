@@ -10,6 +10,9 @@ import { organizerEventRouter, publicEventRouter } from "./routes/event.routes.j
 import { organizerVoucherRouter, publicVoucherRouter } from "./routes/voucher.routes.js";
 import { regionRouter, uploadRouter } from "./routes/region.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
+import { referralRouter, customerRouter } from "./routes/customer.routes.js"; // [BARU] Tahap 4-5
+import { transactionRouter, organizerTransactionRouter, cronRouter } from "./routes/transaction.routes.js"; // [BARU] Tahap 6
+import { sweepOverdueTransactions } from "./services/transaction.service.js"; // [BARU] Tahap 6
 
 export const app = express();
 
@@ -54,6 +57,11 @@ app.use("/api/organizer/vouchers", organizerVoucherRouter);
 app.use("/api/vouchers", publicVoucherRouter);
 app.use("/api/regions", regionRouter);
 app.use("/api/upload", uploadRouter);
+app.use("/api/referral", referralRouter); // [BARU] Tahap 4: cek kode referral
+app.use("/api/customer", customerRouter); // [BARU] Tahap 5: data dashboard Overview
+app.use("/api/transactions", transactionRouter); // [BARU] Tahap 6: transaksi customer
+app.use("/api/organizer/transactions", organizerTransactionRouter); // [BARU] Tahap 6: accept/reject organizer
+app.use("/api/cron", cronRouter); // [BARU] Tahap 6: dipanggil Vercel Cron
 
 // 6. Handler 404 jika endpoint tidak ditemukan
 app.use((_req, res) => {
@@ -72,6 +80,12 @@ if (process.env.VERCEL !== "1") {
   app.listen(PORT, () => {
     console.log(`🚀 Chistix Express Backend berjalan di http://localhost:${PORT}`);
   });
+
+  // [BARU] Tahap 6 - lokal: cek deadline transaksi setiap 1 menit
+  // (di Vercel, tugas ini dikerjakan Vercel Cron lewat /api/cron/transactions)
+  setInterval(() => {
+    sweepOverdueTransactions().catch((err) => console.error("[sweep]", err));
+  }, 60_000);
 }
 
 export default app;

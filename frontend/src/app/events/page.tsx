@@ -1,14 +1,34 @@
 'use client';
 
-import React, { useState } from 'react';
+// [LAMA] import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react'; // [BARU] + useEffect, Suspense
+import { useSearchParams } from 'next/navigation'; // [BARU] baca ?q= dari search navbar
 import Navbar from '@/components/menubar/navbar';
 import Footer from '@/components/menubar/footer';
 import SidebarPortal from '@/components/SidebarPortal';
 import EventCard from '@/components/EventCard';
-import { DUMMY_EVENTS } from '@/data/events';
+// [LAMA] data dummy, diganti data dari backend
+// import { DUMMY_EVENTS } from '@/data/events';
+import type { EventItem } from '@/data/events'; // [BARU] tipe kartu event
+import { apiFetch, buildQuery } from '@/lib/api'; // [BARU]
+import { useDebounce } from '@/lib/useDebounce'; // [BARU]
+import { toEventCard } from '@/lib/eventMapper'; // [BARU]
+import type { ApiEvent, Paged } from '@/types/api'; // [BARU]
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export default function EventsPage() {
+// [BARU] nilai sort di UI -> nilai sort yang diterima backend
+const SORT_MAP: Record<string, string> = {
+  '': 'soonest',
+  latest: 'newest',
+  popular: 'popular',
+  'price-low': 'price_asc',
+  'price-high': 'price_desc',
+};
+
+// [LAMA] export default function EventsPage() {
+// [BARU] isi halaman dipindah ke EventsContent, karena useSearchParams wajib dibungkus Suspense
+function EventsContent() {
+  const searchParams = useSearchParams(); // [BARU]
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
@@ -17,6 +37,28 @@ export default function EventsPage() {
   const [sortOption, setSortOption] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
+
+  // [BARU] hasil dari backend + status loading/error
+  const [result, setResult] = useState<{ data: EventItem[]; total: number; totalPages: number }>({
+    data: [],
+    total: 0,
+    totalPages: 1,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // [BARU] debounce: request baru dikirim 400 ms setelah user berhenti mengetik
+  const debouncedSearch = useDebounce(searchQuery, 400);
+
+  // [BARU] isi kotak search dari ?q= (dikirim oleh search bar di navbar)
+  useEffect(() => {
+    setSearchQuery(searchParams.get('q') ?? '');
+  }, [searchParams]);
+
+  // [BARU] kata kunci berubah -> kembali ke halaman 1
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
 
   // Menerima filter dari SidebarPortal
   const handleFilterChange = (filters: {
@@ -42,39 +84,70 @@ export default function EventsPage() {
     setCurrentPage(1);
   };
 
-  // Filter Data Event secara presisi (dengan Optional Chaining `?.` agar tidak error jika undefined)
-  const filteredEvents = DUMMY_EVENTS.filter((event) => {
-    const matchCategory = selectedCategory 
-      ? event.category?.toLowerCase() === selectedCategory.toLowerCase() 
-      : true;
+  // [BARU] search + filter + sort + pagination dikerjakan BACKEND (syarat requirement)
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setLoading(true);
+    const query = buildQuery({
+      search: debouncedSearch,
+      category: selectedCategory,
+      city: selectedLocation,
+      minPrice,
+      maxPrice,
+      sort: SORT_MAP[sortOption],
+      page: currentPage,
+      limit: itemsPerPage,
+    });
+    apiFetch<Paged<ApiEvent>>(`/api/events${query}`, { signal: ctrl.signal })
+      .then((r) => {
+        setResult({ data: r.data.map(toEventCard), total: r.total, totalPages: r.totalPages });
+        setError('');
+      })
+      .catch((e: Error) => {
+        if (e.name !== 'AbortError') setError(e.message);
+      })
+      .finally(() => setLoading(false));
+    return () => ctrl.abort(); // batalkan request lama kalau filter berubah lagi
+  }, [debouncedSearch, selectedCategory, selectedLocation, minPrice, maxPrice, sortOption, currentPage]);
 
-    const matchLocation = selectedLocation 
-      ? event.location?.toLowerCase().includes(selectedLocation.toLowerCase()) 
-      : true;
+  // [LAMA] filter, sort, dan pagination di browser. Diganti request ke backend di atas.
+  // // Filter Data Event secara presisi (dengan Optional Chaining `?.` agar tidak error jika undefined)
+  // const filteredEvents = DUMMY_EVENTS.filter((event) => {
+  //   const matchCategory = selectedCategory 
+  //     ? event.category?.toLowerCase() === selectedCategory.toLowerCase() 
+  //     : true;
+  //
+  //   const matchLocation = selectedLocation 
+  //     ? event.location?.toLowerCase().includes(selectedLocation.toLowerCase()) 
+  //     : true;
+  //
+  //   const matchSearch = searchQuery 
+  //     ? event.title?.toLowerCase().includes(searchQuery.toLowerCase()) 
+  //     : true;
+  //   
+  //   const matchMinPrice = minPrice !== undefined ? event.price >= minPrice : true;
+  //   const matchMaxPrice = maxPrice !== undefined ? event.price <= maxPrice : true;
+  //
+  //   return matchCategory && matchLocation && matchSearch && matchMinPrice && matchMaxPrice;
+  // });
+  //
+  // // Sorting Data
+  // const sortedEvents = [...filteredEvents].sort((a, b) => {
+  //   if (sortOption === 'latest') return new Date(b.date).getTime() - new Date(a.date).getTime();
+  //   if (sortOption === 'popular') return (b.isPopular ? 1 : 0) - (a.isPopular ? 1 : 0);
+  //   if (sortOption === 'price-low') return a.price - b.price;
+  //   if (sortOption === 'price-high') return b.price - a.price;
+  //   return 0;
+  // });
+  //
+  // // Pagination
+  // const totalPages = Math.ceil(sortedEvents.length / itemsPerPage) || 1;
+  // const startIndex = (currentPage - 1) * itemsPerPage;
+  // const currentEvents = sortedEvents.slice(startIndex, startIndex + itemsPerPage);
 
-    const matchSearch = searchQuery 
-      ? event.title?.toLowerCase().includes(searchQuery.toLowerCase()) 
-      : true;
-    
-    const matchMinPrice = minPrice !== undefined ? event.price >= minPrice : true;
-    const matchMaxPrice = maxPrice !== undefined ? event.price <= maxPrice : true;
-
-    return matchCategory && matchLocation && matchSearch && matchMinPrice && matchMaxPrice;
-  });
-
-  // Sorting Data
-  const sortedEvents = [...filteredEvents].sort((a, b) => {
-    if (sortOption === 'latest') return new Date(b.date).getTime() - new Date(a.date).getTime();
-    if (sortOption === 'popular') return (b.isPopular ? 1 : 0) - (a.isPopular ? 1 : 0);
-    if (sortOption === 'price-low') return a.price - b.price;
-    if (sortOption === 'price-high') return b.price - a.price;
-    return 0;
-  });
-
-  // Pagination
-  const totalPages = Math.ceil(sortedEvents.length / itemsPerPage) || 1;
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentEvents = sortedEvents.slice(startIndex, startIndex + itemsPerPage);
+  // [BARU] hasil dari backend sudah berupa 1 halaman
+  const totalPages = result.totalPages;
+  const currentEvents = result.data;
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -102,7 +175,8 @@ export default function EventsPage() {
           <div className="flex-1 w-full space-y-4">
             
             {/* 1. Bar Sort */}
-            <div className="bg-white rounded-2xl px-5 py-3 border border-gray-200/80 shadow-sm flex items-center justify-between w-full">
+            {/* [LAMA] className="... flex items-center justify-between w-full" */}
+            <div className="bg-white rounded-2xl px-5 py-3 border border-gray-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-bold text-gray-800">Sort</span>
                 
@@ -130,6 +204,15 @@ export default function EventsPage() {
                 </div>
 
               </div>
+
+              {/* [BARU] kotak search dengan debounce */}
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari nama event, kota, atau venue..."
+                className="w-full sm:w-[260px] bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-amber-500"
+              />
               
               {/* Teks "Total: X event" sudah dihapus dari sini */}
             </div>
@@ -145,7 +228,32 @@ export default function EventsPage() {
                 )}
               </h2>
 
+              {/* [LAMA]
               {currentEvents.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 w-full">
+                  {currentEvents.map((event) => (
+                    <EventCard key={event.id} variant="standard" event={event} />
+                  ))}
+                </div>
+              ) : (
+                <div className="py-16 text-center text-gray-400 text-sm">
+                  Tidak ada event yang ditemukan sesuai filter yang dipilih.
+                </div>
+              )}
+              */}
+
+              {/* [BARU] urutan: loading -> error -> ada hasil -> kosong */}
+              {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 w-full">
+                  {Array.from({ length: itemsPerPage }, (_, i) => (
+                    <div key={i} className="h-[320px] rounded-2xl bg-gray-200/70 animate-pulse" />
+                  ))}
+                </div>
+              ) : error ? (
+                <div className="py-16 text-center text-red-600 text-sm">
+                  Gagal memuat event: {error}
+                </div>
+              ) : currentEvents.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 w-full">
                   {currentEvents.map((event) => (
                     <EventCard 
@@ -156,8 +264,16 @@ export default function EventsPage() {
                   ))}
                 </div>
               ) : (
-                <div className="py-16 text-center text-gray-400 text-sm">
-                  Tidak ada event yang ditemukan sesuai filter yang dipilih.
+                <div className="py-16 text-center text-gray-400 text-sm space-y-3">
+                  <p>Tidak ada event yang ditemukan sesuai filter yang dipilih.</p>
+                  {/* [BARU] tombol reset di empty state */}
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    className="px-4 py-1.5 border border-amber-500 text-amber-600 font-bold text-xs rounded-lg hover:bg-amber-50 transition cursor-pointer"
+                  >
+                    Reset filter
+                  </button>
                 </div>
               )}
 
@@ -210,5 +326,14 @@ export default function EventsPage() {
       {/* Footer */}
       <Footer />
     </div>
+  );
+}
+
+// [BARU] wrapper: Next.js mewajibkan useSearchParams dibungkus Suspense
+export default function EventsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Loading...</div>}>
+      <EventsContent />
+    </Suspense>
   );
 }
