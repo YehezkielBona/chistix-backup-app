@@ -10,6 +10,7 @@ import { organizerEventRouter, publicEventRouter } from "./routes/event.routes.j
 import { organizerVoucherRouter, publicVoucherRouter } from "./routes/voucher.routes.js";
 import { regionRouter, uploadRouter } from "./routes/region.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
+import { initCronJobs } from "./services/cron.service.js";
 
 export const app = express();
 
@@ -65,12 +66,13 @@ app.use((_req, res) => {
 
 // 7. Global Error Handler
 app.use(errorHandler);
+initCronJobs()
 
 // Jalankan server jika tidak sedang di-import sebagai Serverless Function Vercel
 if (process.env.VERCEL !== "1") {
-  const PORT = Number(process.env.PORT) || 4000;
+  const PORT = Number(process.env.PORT) || 8000;
   app.listen(PORT, () => {
-    console.log(`🚀 Chistix Express Backend berjalan di http://localhost:${PORT}`);
+    console.log(` Chistix Express Backend berjalan di http://localhost:${PORT}`);
   });
 }
 
