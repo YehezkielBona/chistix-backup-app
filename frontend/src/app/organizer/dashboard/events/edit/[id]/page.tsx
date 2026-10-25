@@ -897,7 +897,7 @@ export default function EditEventPage({
                       <div className="sm:col-span-2 space-y-2">
                         <input
                           type="file"
-                          accept="image/*"
+                          accept=".jpg,.jpeg,.png,.webp"
                           onChange={handleThumbnailSelect}
                           className="text-sm text-neutral-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border file:border-neutral-200 file:text-xs file:font-semibold file:bg-neutral-50 file:text-neutral-700 hover:file:bg-neutral-100 file:cursor-pointer cursor-pointer"
                         />
@@ -937,7 +937,7 @@ export default function EditEventPage({
                       <div className="sm:col-span-2 space-y-2">
                         <input
                           type="file"
-                          accept="image/*"
+                          accept=".jpg,.jpeg,.png,.webp"
                           multiple
                           onChange={handleCoversSelect}
                           className="text-sm text-neutral-600 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border file:border-neutral-200 file:text-xs file:font-semibold file:bg-neutral-50 file:text-neutral-700 hover:file:bg-neutral-100 file:cursor-pointer cursor-pointer"

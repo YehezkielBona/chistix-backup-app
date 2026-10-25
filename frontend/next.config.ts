@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
   // Dengan cara ini browser tetap berkomunikasi di origin yang sama (:3000),
   // sehingga bebas masalah CORS dan cookie sesi login tetap tersimpan otomatis.
   async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:4000";
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
     return [
       {
         source: "/api/:path*",

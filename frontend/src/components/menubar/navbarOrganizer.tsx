@@ -86,7 +86,7 @@ export default function NavbarOrganizer({ user }: { user?: any }) {
           className="hidden shrink-0 items-center gap-4 md:flex lg:gap-6 ml-auto"
         >
           <Link
-            href="/event-manager"
+            href="/organizer/dashboard"
             className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-neutral-800 hover:text-amber-700 transition sm:text-sm"
           >
             <Folder className="h-4 w-4 lg:h-6 lg:w-6 " />
