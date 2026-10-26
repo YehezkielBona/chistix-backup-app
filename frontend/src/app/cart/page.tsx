@@ -7,7 +7,16 @@ import CartItemTable from "@/components/cart/CartItemTable";
 import VoucherSection from "@/components/cart/VoucherSection";
 import OrderSummary from "@/components/cart/OrderSummary";
 import PaymentMethod from "@/components/cart/PaymentMethod";
-import { DUMMY_EVENTS } from "@/data/events";
+import { apiFetch } from "@/lib/api";
+import { authClient } from "@/lib/auth-client";
+import { TICKET_LABEL, type ApiEvent, type CustomerOverview, type TicketTypeEnum } from "@/types/api";
+
+const MAX_PER_ORDER = 10;
+
+const toTicketType = (v: string | null): TicketTypeEnum | null => {
+  const up = (v ?? "").toUpperCase();
+  return up === "VIP" || up === "REGULAR" || up === "PRESALE" ? up : null;
+};
 
 function CartContent() {
   const searchParams = useSearchParams();
@@ -15,21 +24,40 @@ function CartContent() {
   // 1. Ambil query parameter dari URL
   const queryEventId = searchParams.get("eventId");
   const queryQty = searchParams.get("qty");
-  const queryVariant = searchParams.get("variant");
+  const queryTicketType = toTicketType(searchParams.get("ticketType") ?? searchParams.get("variant"));
 
-   // 2. State Data Event Asli dari Backend
-  const [eventData, setEventData] = useState<any>(null);
-  const [isLoadingEvent, setIsLoadingEvent] = useState<boolean>(true);
+  // 2. Ambil data event asli berdasarkan eventId dari URL
+  const [event, setEvent] = useState<ApiEvent | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const { data: session } = authClient.useSession();
+
+  useEffect(() => {
+    if (!queryEventId) {
+      setLoadError("Pilih tiket dari halaman detail event terlebih dahulu.");
+      return;
+    }
+    apiFetch<{ data: ApiEvent }>(`/api/events/${queryEventId}`)
+      .then((r) => setEvent(r.data))
+      .catch((e: Error) => setLoadError(e.message));
+  }, [queryEventId]);
 
   // 3. State Jumlah Tiket
   const [ticketQty, setTicketQty] = useState<number>(() => {
     if (queryQty && Number(queryQty) > 0) return Number(queryQty);
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("chistix_ticket_qty");
+      if (saved && Number(saved) > 0) return Number(saved);
+    }
     return 1;
   });
 
-  // 4. State Varian Tiket (VIP, Regular, atau Presale)
-  const [ticketVariant, setTicketVariant] = useState<string>(() => {
-    if (queryVariant) return queryVariant.toUpperCase();
+  // 4. State Varian Tiket
+  const [ticketType, setTicketType] = useState<TicketTypeEnum>(() => {
+    if (queryTicketType) return queryTicketType;
+    if (typeof window !== "undefined") {
+      const saved = toTicketType(sessionStorage.getItem("chistix_ticket_variant"));
+      if (saved) return saved;
+    }
     return "REGULAR";
   });
 
@@ -39,87 +67,79 @@ function CartContent() {
   const [pointBalance, setPointBalance] = useState<number>(0);
   const [isPointsClaimed, setIsPointsClaimed] = useState<boolean>(false);
 
-  // 6. Tarik Data Event Riil dari Backend Express
+  // Saldo poin asli customer dari backend
   useEffect(() => {
-    const fetchEventDetail = async () => {
-      try {
-        setIsLoadingEvent(true);
-        // Jika ada queryEventId, pakai ID itu, jika tidak ada, ambil event pertama yang aktif
-        const url = queryEventId ? `/api/events/${queryEventId}` : "/api/events";
-        const res = await fetch(url);
-        const json = await res.json();
+    if (!session?.user) return;
+    apiFetch<{ data: CustomerOverview }>("/api/customer/overview")
+      .then((r) => setPointBalance(r.data.points ?? 0))
+      .catch(() => setPointBalance(0));
+  }, [session?.user]);
 
-        if (json.success && json.data) {
-          const fetched = Array.isArray(json.data) ? json.data[0] : json.data;
-          setEventData(fetched);
-        }
-      } catch (err) {
-        console.error("Gagal mengambil event dari backend:", err);
-      } finally {
-        setIsLoadingEvent(false);
-      }
-    };
-
-    fetchEventDetail();
-  }, [queryEventId]);
   // Sync state dengan URL Query Parameter saat URL berubah
   useEffect(() => {
     const qty = searchParams.get("qty");
-    const variant = searchParams.get("variant");
+    const type = toTicketType(searchParams.get("ticketType") ?? searchParams.get("variant"));
 
     if (qty && Number(qty) > 0) setTicketQty(Number(qty));
-    if (variant) setTicketVariant(variant);
+    if (type) setTicketType(type);
   }, [searchParams]);
 
-  // Hitung Harga Satuan Tiket Sesuai Kategori dari Database
-  const getPriceByTier = () => {
-    if (!eventData) return 0;
-    const variantUpper = ticketVariant.toUpperCase();
-    if (variantUpper === "VIP") {
-      return eventData.vipPriceFinal || eventData.vipPriceNormal || 0;
-    }
-    if (variantUpper === "PRESALE") {
-      return eventData.presalePriceFinal || eventData.presalePriceNormal || 0;
-    }
-    return eventData.regularPriceFinal || eventData.regularPriceNormal || 0;
-  };
-  const basePricePerTicket = getPriceByTier();
+  // 6. Penentuan Harga & Sisa Kursi Kategori
+  const selectedTier = event?.ticketTiers.find((t) => t.ticketType === ticketType) ?? null;
+  const basePricePerTicket = selectedTier?.finalPrice ?? 0;
+  const maxQty = selectedTier ? Math.min(MAX_PER_ORDER, selectedTier.remaining) : 0;
+
+  useEffect(() => {
+    if (maxQty > 0 && ticketQty > maxQty) setTicketQty(maxQty);
+  }, [maxQty, ticketQty]);
+
   const rawSubtotal = basePricePerTicket * ticketQty;
   const taxFee = Math.round(rawSubtotal * 0.11); // PPN 11%
 
-  // Nilai potongan poin (hanya aktif jika di-toggle)
-  const pointDiscountValue = isPointsClaimed ? pointBalance : 0;
-  
-  // Total Diskon (Kupon + Poin)
+  // Potongan poin
+  const pointDiscountValue = isPointsClaimed ? Math.min(pointBalance, Math.max(0, rawSubtotal - couponDiscount)) : 0;
   const totalDiscount = couponDiscount + pointDiscountValue;
-
-  // Total Akhir
   const subtotalAfterDiscount = Math.max(0, rawSubtotal - totalDiscount);
   const totalAmount = Math.max(0, subtotalAfterDiscount + taxFee);
 
-  // Validasi kode voucher ke backend (Express): POST /api/vouchers/validate
-  // Hasilnya mengisi couponDiscount (state milik tim cart).
+  // Validasi kode voucher
   const handleApplyVoucher = async (code: string) => {
-    const res = await fetch("/api/vouchers/validate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, eventId: queryEventId }),
-    });
-    const json = await res.json();
+    try {
+      const res = await fetch("/api/vouchers/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, eventId: queryEventId }),
+      });
+      const json = await res.json();
 
-    if (json.success) {
-      const { discountType, discount } = json.data;
-      setAppliedVoucherCode(code); // <-- Simpan kode voucher agar bisa dikirim saat checkout
-      if (discountType === "PERCENTAGE") {
-        setCouponDiscount(Math.round(rawSubtotal * (discount / 100)));
+      if (json.success) {
+        const { discountType, discount } = json.data;
+        setAppliedVoucherCode(code); // Simpan kode untuk proses checkout
+        if (discountType === "PERCENTAGE") {
+          setCouponDiscount(Math.round(rawSubtotal * (discount / 100)));
+        } else {
+          setCouponDiscount(discount);
+        }
+        alert(`Voucher berhasil! Potongan: ${discountType === "PERCENTAGE" ? discount + "%" : "Rp " + discount.toLocaleString("id-ID")}`);
       } else {
-        setCouponDiscount(discount);
+        setAppliedVoucherCode("");
+        alert(json.message);
       }
-      alert(`Voucher berhasil! Potongan: ${discountType === "PERCENTAGE" ? discount + "%" : "Rp " + discount.toLocaleString("id-ID")}`);
-    } else {
+    } catch (err: any) {
       setAppliedVoucherCode("");
-      alert(json.message);
+      alert(err.message || "Gagal validasi voucher");
     }
+  };
+
+  if (loadError) {
+    return (
+      <div className="w-full max-w-xl bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-600">
+        {loadError}
+      </div>
+    );
+  }
+  if (!event) {
+    return <div className="text-sm text-slate-500 py-10">Memuat data event...</div>;
   }
 
   return (
@@ -133,10 +153,10 @@ function CartContent() {
       </div>
 
       {/* 1. Event Ticket Section */}
-      <section>
+      <section className="space-y-2">
         <CartItemTable
-          eventTitle={eventData?.title || "Memuat Event..."}
-          organizerName={eventData?.organizer?.name || "Nusantara Orchestra Productions"}
+          eventTitle={event.title}
+          organizerName={event.organizer?.name ?? "-"}
           quantity={ticketQty}
           setQuantity={(newQty) => {
             setTicketQty(newQty);
@@ -144,12 +164,24 @@ function CartContent() {
               sessionStorage.setItem("chistix_ticket_qty", newQty.toString());
             }
           }}
-          variant={ticketVariant}
+          variant={TICKET_LABEL[ticketType]}
           basePrice={basePricePerTicket}
+          maxQuantity={maxQty}
         />
+        {selectedTier?.lowStock && (
+          <p className="text-[11px] font-semibold text-red-500">
+            Tinggal {selectedTier.remaining} tiket {TICKET_LABEL[ticketType]} lagi!
+          </p>
+        )}
+        {(!selectedTier || !selectedTier.isAvailable) && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            Tiket {TICKET_LABEL[ticketType]}{" "}
+            {selectedTier ? selectedTier.statusLabel.toLowerCase() : "tidak dijual untuk event ini"}.
+          </p>
+        )}
       </section>
 
-      {/* 2. Voucher Discount Section (Tulisan "Discount Coupon" ganda sudah dihapus) */}
+      {/* 2. Voucher Discount Section */}
       <section className="bg-slate-50 p-4 rounded-xl border border-slate-100">
         <VoucherSection onApplyVoucher={handleApplyVoucher} />
       </section>
@@ -166,13 +198,11 @@ function CartContent() {
           </div>
         </div>
 
-        {/* Garis Pemisah (Divider) */}
         <hr className="border-slate-200 my-2" />
         
-        {/* Informasi Poin & Switch Toggle */}
         <div className="flex items-center justify-between py-1">
           <p className="text-xs text-slate-600 font-medium">
-            You have <span className="font-bold text-amber-600">{pointBalance} Coins</span>
+            You have <span className="font-bold text-amber-600">{pointBalance.toLocaleString("id-ID")} Points</span>
           </p>
 
           <button
@@ -212,16 +242,18 @@ function CartContent() {
       </section>
 
       {/* 5. Payment Method & Checkout */}
-      <section className="pt-2">
-        <PaymentMethod
-          totalAmount={totalAmount}
-          quantity={ticketQty}
-          eventId={eventData?.id || queryEventId || ""}
-          ticketVariant={ticketVariant}
-          voucherCode={appliedVoucherCode}
-          pointsUsed={pointDiscountValue}
-        />
-      </section>
+      {selectedTier?.isAvailable && (
+        <section className="pt-2">
+          <PaymentMethod
+            totalAmount={totalAmount}
+            quantity={ticketQty}
+            eventId={event?.id || queryEventId || ""}
+            ticketVariant={ticketType}
+            voucherCode={appliedVoucherCode}
+            pointsUsed={pointDiscountValue}
+          />
+        </section>
+      )}
     </div>
   );
 }

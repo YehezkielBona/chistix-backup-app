@@ -2,6 +2,9 @@
 
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client"; // [BARU] cek login
+// [LAMA] import type { ApiEvent, ApiTicketTier } from "@/types/api"; // [BARU]
+import { TICKET_LABEL, type ApiEvent, type ApiTicketTier } from "@/types/api"; // [BARU] + TICKET_LABEL
 
 interface TicketTierItem {
   id?: string;
@@ -24,6 +27,9 @@ interface EventOrderSidebarProps {
     startDate?: string;
   };
 }
+
+const MAX_PER_ORDER = 10; // [BARU] sama dengan aturan Zod di backend
+const LOW_STOCK = 5; // [BARU] batas "tickets left!", sama dengan LOW_STOCK_THRESHOLD di backend
 
 export default function EventOrderSidebar({ event }: EventOrderSidebarProps) {
   const router = useRouter();
@@ -58,15 +64,26 @@ export default function EventOrderSidebar({ event }: EventOrderSidebarProps) {
     if (isCurrentTierDisabled) return;
 
     if (typeof window !== "undefined") {
-      sessionStorage.setItem("chistix_ticket_qty", ticketAmount.toString());
-      sessionStorage.setItem("chistix_ticket_variant", selectedVariant);
+      sessionStorage.setItem("chistix_ticket_qty", ticketAmount.toString()); // [BARU] cadangan untuk cart
+      sessionStorage.setItem("chistix_ticket_variant", ticketType);
     }
-
-    const eventId = event?.id || 1;
-    router.push(
-      `/cart?eventId=${eventId}&variant=${encodeURIComponent(selectedVariant)}&qty=${ticketAmount}`
-    );
+    router.push(`/cart?eventId=${event.id}&ticketType=${ticketType}&qty=${ticketAmount}`);
   };
+
+  // [BARU] teks tombol sesuai kondisi
+  const buttonLabel = isOrganizer
+    ? "Akun organizer tidak dapat membeli"
+    : isSalesClosed
+      // [LAMA] ? "Penjualan Ditutup (H-1)"
+      ? "Penjualan Ditutup"
+      : tiers.length === 0 // [BARU]
+        ? "Tiket Belum Tersedia"
+        : !selectedTier?.isAvailable
+          // [LAMA] ? selectedTier?.statusLabel || "Tiket Belum Tersedia"
+          ? tierStatus(selectedTier) // [BARU]
+          : !session?.user // [BARU]
+            ? "Login untuk Order"
+            : "Order Ticket";
 
   return (
     <div className="bg-white border border-slate-200/80 p-5 rounded-2xl space-y-4 shadow-sm w-full">
@@ -103,8 +120,35 @@ export default function EventOrderSidebar({ event }: EventOrderSidebarProps) {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
+              {/* [LAMA]
+              <option value="Presale">Presale</option>
+              <option value="VIP">VIP</option>
+              <option value="Regular">Regular</option>
+              */}
+              {/* [BARU] daftar tier dari backend, tier yang belum/tidak dijual dinonaktifkan */}
+              {tiers.map((t) => (
+                <option key={t.id} value={t.name} disabled={!t.isAvailable}>
+                  {/* [LAMA] {t.name} */}
+                  {/* [LAMA] {!t.isAvailable ? ` (${t.statusLabel})` : ""} */}
+                  {tierLabel(t)}
+                  {!t.isAvailable ? ` (${tierStatus(t)})` : ""}
+                </option>
+              ))}
+            </select>
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -139,7 +183,8 @@ export default function EventOrderSidebar({ event }: EventOrderSidebarProps) {
             onClick={() => setTicketAmount((prev) => prev + 1)}
             className="text-slate-400 hover:text-slate-700 font-bold text-xs cursor-pointer px-1 disabled:opacity-40"
           >
-            +
+            {/* [LAMA] Order Ticket */}
+            {buttonLabel}
           </button>
         </div>
       </div>

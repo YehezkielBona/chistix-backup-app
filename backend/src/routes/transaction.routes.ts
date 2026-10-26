@@ -1,17 +1,48 @@
-import { Router, Request, Response } from "express";
-import { requireOrganizer } from "../middlewares/role.middleware.js";
+import { Router, type Request, type Response, type NextFunction } from "express";
+import * as c from "../controllers/transaction.controller.js";
 import {
+  createTransactionController,
+  getTransactionByIdController,
   getOrganizerTransactionsController,
   acceptTransactionController,
-  rejectTransactionController,
-  createTransactionController,
-  getTransactionByIdController
+  rejectTransactionController
 } from "../controllers/transaction.controller.js";
+import { requireRole } from "../middlewares/role.middleware.js";
+import { uploadPaymentProof } from "../middlewares/upload.middleware.js";
 import { sendResult } from "../lib/sendResult.js";
 
-export const organizerTransactionRouter = Router();
+// ================= CUSTOMER TRANSACTIONS & CHECKOUT =================
+// Router gabungan untuk customer (mendukung Checkout Kiel + Riwayat Muti)
+export const customerTransactionRouter = Router();
 
-organizerTransactionRouter.use(requireOrganizer);
+// 1. Checkout tiket (Kiel)
+customerTransactionRouter.post("/", async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id;
+  const result = await createTransactionController({
+    ...req.body,
+    userId: userId || req.body.userId,
+  });
+  sendResult(res, result);
+});
+
+// 2. Ambil detail pembayaran & batas countdown 10 menit (Kiel)
+customerTransactionRouter.get("/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await getTransactionByIdController(String(id));
+  sendResult(res, result);
+});
+
+// Export juga sebagai transactionRouter agar kompatibel dengan server.ts milik Muti
+export const transactionRouter = customerTransactionRouter;
+
+// 3. Fitur riwayat & aksi customer (Muti)
+transactionRouter.get("/me/list", requireRole("CUSTOMER"), c.myTransactionsController);
+transactionRouter.post("/:id/payment-proof", requireRole("CUSTOMER"), uploadPaymentProof, c.uploadProofController);
+transactionRouter.patch("/:id/cancel", requireRole("CUSTOMER"), c.cancelController);
+
+
+// ================= ORGANIZER TRANSACTIONS =================
+export const organizerTransactionRouter = Router();
 
 organizerTransactionRouter.get("/", async (req: Request, res: Response) => {
   const organizerId = (req as any).user?.id;
@@ -33,28 +64,14 @@ const handleReject = async (req: Request, res: Response) => {
   sendResult(res, result);
 };
 
+// Dukung method PATCH maupun PUT
 organizerTransactionRouter.patch("/:id/accept", handleAccept);
 organizerTransactionRouter.put("/:id/accept", handleAccept);
 
 organizerTransactionRouter.patch("/:id/reject", handleReject);
 organizerTransactionRouter.put("/:id/reject", handleReject);
 
-// router transaksi untuk customer publik/checkout
 
-export const customerTransactionRouter = Router ()
-
-customerTransactionRouter.post("/", async (req: Request, res: Response) => {
-  const userId = (req as any).user?.id
-  const result = await createTransactionController({
-    ...req.body,
-    userId: userId || req.body.userId,
-  })
-  sendResult(res, result)
-})
-
-// Endpoint: GET /api/transactions/:id (Ambil detail pembayaran & batas waktu)
-customerTransactionRouter.get("/:id", async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const result = await getTransactionByIdController(String(id));
-  sendResult(res, result);
-});
+// ================= CRON =================
+export const cronRouter = Router();
+cronRouter.get("/transactions", c.cronSweepController);

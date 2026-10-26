@@ -2,6 +2,7 @@
 
 import React, { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { CreditCard } from "lucide-react";
 
 interface PaymentMethodProps {
   totalAmount: number;
@@ -12,26 +13,26 @@ interface PaymentMethodProps {
   pointsUsed?: number;
 }
 
-function PaymentMethodContent({ 
+function PaymentMethodContent({
   totalAmount,
   quantity = 1,
   eventId,
   ticketVariant,
   voucherCode,
-  pointsUsed = 0, }: PaymentMethodProps) {
+  pointsUsed = 0,
+}: PaymentMethodProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   // State default memilih DANA
   const [selectedMethod, setSelectedMethod] = useState<string>("DANA");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const methods = [
     { id: "DANA", label: "DANA", route: "/cart/payment/ewallet/dana", textColor: "text-blue-600" },
-    { id: "QRIS", label: "QRIS", route: "/cart/payment", textColor: "text-slate-800" }, // Mengarah langsung ke /cart/payment
+    { id: "QRIS", label: "QRIS", route: "/cart/payment", textColor: "text-slate-800" },
     { id: "ShopeePay", label: "ShopeePay", route: "/cart/payment/ewallet/shopeepay", textColor: "text-orange-600" },
   ];
-
-   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleCheckout = async () => {
     if (!eventId) {
@@ -42,7 +43,7 @@ function PaymentMethodContent({
     try {
       setIsSubmitting(true);
 
-      // 1. Kirim transaksi ke backend Express kita
+      // 1. Kirim transaksi ke backend Express
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -61,7 +62,7 @@ function PaymentMethodContent({
         throw new Error(json.message || "Gagal membuat transaksi");
       }
 
-      // 2. Dapatkan ID Transaksi resmi dari database Neon!
+      // 2. Dapatkan ID Transaksi resmi dari database Neon
       const newTransactionId = json.data.id;
 
       // 3. Tentukan halaman tujuan pembayaran
@@ -85,7 +86,7 @@ function PaymentMethodContent({
   return (
     <div className="space-y-4">
       <h2 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
-        <span>💳</span> PAYMENT METHOD
+        <CreditCard className="w-4 h-4 text-slate-600" /> PAYMENT METHOD
       </h2>
 
       {/* Choice Buttons */}
@@ -117,7 +118,7 @@ function PaymentMethodContent({
           disabled={totalAmount <= 0 || isSubmitting}
           className="px-10 py-2.5 bg-[#FF8A00] hover:bg-[#E07B00] active:bg-amber-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-full transition-all shadow-xs cursor-pointer"
         >
-          Check Out
+          {isSubmitting ? "Processing..." : "Check Out"}
         </button>
       </div>
     </div>
