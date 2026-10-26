@@ -1,13 +1,22 @@
-export type AttendanceeStatus = "ATTENDED" | "REGISTERED"
+export type AttendanceStatus = "ATTENDED" | "REGISTERED";
+export type AttendanceeStatus = AttendanceStatus;
+
+export type TicketTierType = "PRESALE" | "REGULAR" | "VIP";
 
 export interface AttendeeItem {
-    id: string
-    eventId: string
-    customerName: string
-    email: string
-    ticketTier: string
-    quantity: number
-    totalPaid: number
-    status: AttendanceeStatus
-    checkInTime?: string
+  id: string;
+  ticketCode: string;
+  qrToken?: string;
+  transactionId?: string;
+  eventId: string;
+  eventName: string;
+  customerName: string;
+  email: string;
+  ticketTier: TicketTierType | string;
+  quantity: number;
+  transactionQty?: number;
+  totalPaid: number;
+  status: AttendanceStatus;
+  checkInTime?: string | null;
+  createdAt?: string;
 }

@@ -8,12 +8,14 @@ import { toNodeHandler } from "better-auth/node";
 import { auth } from "./controllers/auth.controller.js";
 import { organizerEventRouter, publicEventRouter } from "./routes/event.routes.js";
 import { organizerVoucherRouter, publicVoucherRouter } from "./routes/voucher.routes.js";
+import { organizerTransactionRouter, customerTransactionRouter, cronRouter } from "./routes/transaction.routes.js";
+import { organizerAttendeeRouter } from "./routes/attendee.routes.js";
+import { organizerReviewRouter, reviewRouter, eventReviewRouter } from "./routes/review.routes.js";
 import { regionRouter, uploadRouter } from "./routes/region.routes.js";
+import { referralRouter, customerRouter } from "./routes/customer.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
-import { referralRouter, customerRouter } from "./routes/customer.routes.js"; // [BARU] Tahap 4-5
-import { transactionRouter, organizerTransactionRouter, cronRouter } from "./routes/transaction.routes.js"; // [BARU] Tahap 6
-import { sweepOverdueTransactions } from "./services/transaction.service.js"; // [BARU] Tahap 6
-import { reviewRouter, eventReviewRouter } from "./routes/review.routes.js"; // [BARU] review
+import { initCronJobs } from "./services/cron.service.js";
+import { sweepOverdueTransactions } from "./services/transaction.service.js";
 
 export const app = express();
 
@@ -51,19 +53,22 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-// 5. Pasang semua Router
+// 5. Pasang semua Router (Organizer + Customer + Publik)
 app.use("/api/organizer/events", organizerEventRouter);
-app.use("/api/events", eventReviewRouter); // GET /api/events/:id/reviews
-app.use("/api/reviews", reviewRouter);     // review customer
-app.use("/api/events", publicEventRouter);
 app.use("/api/organizer/vouchers", organizerVoucherRouter);
+app.use("/api/organizer/transactions", organizerTransactionRouter);
+app.use("/api/organizer/attendees", organizerAttendeeRouter);
+app.use("/api/organizer/reviews", organizerReviewRouter);
+
+app.use("/api/events", eventReviewRouter); // GET /api/events/:id/reviews
+app.use("/api/events", publicEventRouter);
 app.use("/api/vouchers", publicVoucherRouter);
-app.use("/api/regions", regionRouter);
-app.use("/api/upload", uploadRouter);
+app.use("/api/reviews", reviewRouter);     // review customer
 app.use("/api/referral", referralRouter); // cek kode referral
 app.use("/api/customer", customerRouter); // data dashboard Overview
-app.use("/api/transactions", transactionRouter); // transaksi customer
-app.use("/api/organizer/transactions", organizerTransactionRouter); // accept/reject organizer
+app.use("/api/transactions", customerTransactionRouter); // checkout & transaksi customer
+app.use("/api/regions", regionRouter);
+app.use("/api/upload", uploadRouter);
 app.use("/api/cron", cronRouter); // dipanggil Vercel Cron
 
 // 6. Handler 404 jika endpoint tidak ditemukan
@@ -77,15 +82,17 @@ app.use((_req, res) => {
 // 7. Global Error Handler
 app.use(errorHandler);
 
+// Inisialisasi cron jobs lokal
+initCronJobs();
+
 // Jalankan server jika tidak sedang di-import sebagai Serverless Function Vercel
 if (process.env.VERCEL !== "1") {
-  const PORT = Number(process.env.PORT) || 4000;
+  const PORT = Number(process.env.PORT) || 8000;
   app.listen(PORT, () => {
-    console.log(`🚀 Chistix Express Backend berjalan di http://localhost:${PORT}`);
+    console.log(`Chistix Express Backend berjalan di http://localhost:${PORT}`);
   });
 
-  // BARU lokal: cek deadline transaksi setiap 1 menit
-  // (di Vercel, tugas ini dikerjakan Vercel Cron lewat /api/cron/transactions)
+  // Cek deadline transaksi setiap 1 menit
   setInterval(() => {
     sweepOverdueTransactions().catch((err) => console.error("[sweep]", err));
   }, 60_000);

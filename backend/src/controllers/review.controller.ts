@@ -2,7 +2,9 @@ import type { Request, Response, NextFunction } from "express";
 import { parse } from "../utils/validate.js";
 import { createReviewSchema, updateReviewSchema, reviewPageSchema } from "../middlewares/review.middleware.js";
 import * as svc from "../services/review.service.js";
+import { getOrganizerReviewService, replyOrganierReviewService } from "../services/review.service.js";
 
+// ================= CUSTOMER REVIEWS (MUTI) =================
 export async function pendingReviewsController(req: Request, res: Response, next: NextFunction) {
     try {
         const data = await svc.getPendingReviewsService(req.user!.id);
@@ -45,4 +47,43 @@ export async function eventReviewsController(req: Request, res: Response, next: 
         const q = parse(reviewPageSchema, req.query);
         res.json({ success: true, ...(await svc.getEventReviewsService(String(req.params.id), q)) });
     } catch (err) { next(err); }
+}
+
+// ================= ORGANIZER REVIEWS (KIEL) =================
+export async function getOrganizerReviewController(organizerId?: string) {
+  try {
+    const data = await getOrganizerReviewService(organizerId);
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Success load review list",
+      data,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      statusCode: error.statusCode || 500,
+      message: "Fail load review list",
+    };
+  }
+}
+
+export async function replyOrganierReviewController(reviewId: string, body: { replyText?: string }, organizerId: string) {
+  try {
+    const replyText = String(body?.replyText || "");
+    const data = await replyOrganierReviewService(reviewId, replyText, organizerId);
+
+    return {
+      success: true,
+      statusCode: 200,
+      message: "Successfully sent the reply",
+      data,
+    };
+  } catch (error: any) {
+    return {
+        success: false,
+        statusCode: error.statusCode || 400,
+        message: error.message || "Failed to send reply"
+    }
+  }
 }

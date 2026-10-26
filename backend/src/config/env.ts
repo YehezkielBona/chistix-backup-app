@@ -14,7 +14,7 @@ function required(name: string): string {
 }
 
 export const env = {
-  PORT: Number(process.env.PORT) || 4000,
+  PORT: Number(process.env.PORT) || 8000,
   NODE_ENV: process.env.NODE_ENV ?? "development",
 
   // Alamat frontend: dipakai untuk CORS & Better Auth (trustedOrigins)

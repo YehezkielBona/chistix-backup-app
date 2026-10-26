@@ -14,18 +14,9 @@ type FailedStatus = "EXPIRED" | "CANCELED" | "REJECTED";
 
 // ================= A. HELPER INTERNAL =================
 
-// Kembalikan poin & voucher yang dipakai transaksi.
-// Kursi tidak perlu dikembalikan manual: transaksi gagal tidak dihitung sebagai kursi terjual.
+// Kembalikan poin & voucher yang dipakai transaksi
 async function restoreResources(tx: Db, trx: Transaction) {
   if (trx.pointUsed > 0) {
-    // [LAMA]
-    // await tx.user.update({
-    //   where: { id: trx.userId },
-    //   data: { points: { increment: trx.pointUsed } },
-    // });
-
-    // [BARU] kolom points boleh null di schema. Di database NULL + angka = NULL,
-    // jadi kalau masih null, jadikan 0 dulu supaya poin yang dikembalikan tidak hilang
     await tx.user.updateMany({
       where: { id: trx.userId, points: null },
       data: { points: 0 },
@@ -41,13 +32,9 @@ async function restoreResources(tx: Db, trx: Transaction) {
       data: { usedCount: { decrement: 1 } },
     });
   }
-  // [LAMA] // TODO schema v2: kembalikan kupon (couponUsedAt = null) kalau trx.couponDiscount > 0
-  // [BARU] Kupon referral belum ada kolomnya di schema sekarang (couponDiscount / couponUsedAt).
-  //        Kalau nanti ditambahkan, kembalikan kupon di sini.
 }
 
-// Ubah ke status gagal + rollback dalam SATU SQL transaction.
-// Kalau status sudah bukan `from` (diubah proses lain), return null -> rollback tidak jalan dua kali.
+// Ubah ke status gagal + rollback dalam SATU SQL transaction
 async function moveToFailedStatus(trxId: string, from: TransactionStatus[], to: FailedStatus) {
   return prisma.$transaction(async (tx) => {
     const changed = await tx.transaction.updateMany({
@@ -68,13 +55,11 @@ async function createETickets(tx: Db, trx: Pick<Transaction, "id" | "quantity">)
     data: Array.from({ length: trx.quantity }, () => ({
       transactionId: trx.id,
       ticketCode: `CHX-${crypto.randomBytes(4).toString("hex").toUpperCase()}`,
-      qrToken: crypto.randomUUID(), // isi QR, dipakai scanner
+      qrToken: crypto.randomUUID(),
     })),
   });
 }
 
-// Data yang ikut diambil untuk daftar & detail transaksi
-// (ticketType ikut terkirim otomatis karena include selalu menyertakan semua kolom Transaction)
 const listInclude = {
   event: {
     select: {
@@ -88,14 +73,172 @@ const listInclude = {
   },
 } satisfies Prisma.TransactionInclude;
 
-// ================= B. CUSTOMER =================
+// ================= B. CUSTOMER CHECKOUT & PAYMENT (KIEL) =================
 
-// TODO schema v2: previewCheckoutService & checkoutService
-// [BARU] catatan: kolom ticketType sudah ada di schema, checkout bisa dikerjakan (langkah berikutnya)
+export interface CreateTransactionInput {
+  userId?: string;
+  eventId: string;
+  ticketType: "VIP" | "REGULAR" | "PRESALE";
+  quantity: number;
+  voucherCode?: string;
+  pointsUsed?: number;
+}
 
-// GET /api/transactions
+export const createTransactionService = async (input: CreateTransactionInput) => {
+  const { eventId, ticketType, quantity, voucherCode, pointsUsed = 0 } = input;
+  let customerId = input.userId;
+  if (!customerId) {
+    const defaultCustomer = await prisma.user.findFirst({
+      where: { role: "CUSTOMER" },
+    });
+    customerId = defaultCustomer?.id || "customer-1";
+  }
+
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+  });
+  if (!event || event.deletedAt) {
+    throw new AppError(404, "Cannot find the event or has been deleted");
+  }
+
+  let pricePerTicket = 0;
+  let currentQuota = 0;
+  let quotaField: "vipQuota" | "regularQuota" | "presaleQuota" = "regularQuota";
+
+  if (ticketType === "VIP") {
+    quotaField = "vipQuota";
+    currentQuota = event.vipQuota;
+    pricePerTicket = event.vipPriceFinal || event.vipPriceNormal;
+  } else if (ticketType === "PRESALE") {
+    quotaField = "presaleQuota";
+    currentQuota = event.presaleQuota;
+    pricePerTicket = event.presalePriceFinal || event.presalePriceNormal;
+  } else {
+    quotaField = "regularQuota";
+    currentQuota = event.regularQuota;
+    pricePerTicket = event.regularPriceFinal || event.regularPriceNormal;
+  }
+
+  if (currentQuota < quantity) {
+    throw new AppError(400, `Ticket Quota ${ticketType} doesn't enough! ${currentQuota} left`);
+  }
+
+  const normalPrice = pricePerTicket * quantity;
+  let voucherDiscount = 0;
+  let voucherId: string | null = null;
+
+  if (voucherCode) {
+    const voucher = await prisma.voucher.findFirst({
+      where: {
+        code: voucherCode.trim().toUpperCase(),
+        deletedAt: null,
+      },
+    });
+
+    if (voucher) {
+      voucherId = voucher.id;
+      if (voucher.discountType === "PERCENTAGE") {
+        voucherDiscount = Math.round(normalPrice * (voucher.discount / 100));
+      } else {
+        voucherDiscount = voucher.discount;
+      }
+    }
+  }
+
+  let validPointsUsed = 0;
+  if (pointsUsed > 0) {
+    const user = await prisma.user.findUnique({
+      where: { id: customerId },
+    });
+    const availablePoints = user?.points || 0;
+    validPointsUsed = Math.min(pointsUsed, availablePoints, Math.max(0, normalPrice - voucherDiscount));
+  }
+
+  const totalDiscount = voucherDiscount + validPointsUsed;
+  const totalPrice = Math.max(0, normalPrice - totalDiscount);
+  const paymentDeadline = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
+
+  return await prisma.$transaction(async (tx) => {
+    // 1. Potong Kuota Tiket
+    await tx.event.update({
+      where: { id: eventId },
+      data: {
+        [quotaField]: { decrement: quantity },
+        totalQuotaTiket: { decrement: quantity },
+      },
+    });
+
+    // 2. Potong Poin jika ada
+    if (validPointsUsed > 0) {
+      await tx.user.update({
+        where: { id: customerId },
+        data: {
+          points: { decrement: validPointsUsed },
+        },
+      });
+    }
+
+    // 3. Buat Record Transaksi Baru
+    const newTransaction = await tx.transaction.create({
+      data: {
+        userId: customerId!,
+        eventId: event.id,
+        voucherId,
+        ticketType,
+        quantity,
+        normalPrice,
+        discPrice: totalDiscount,
+        pointUsed: validPointsUsed,
+        totalPrice,
+        status: "WAITING_PAYMENT",
+        paymentDeadline,
+      },
+      include: {
+        event: {
+          select: {
+            title: true,
+            thumbnailImage: true,
+            startDate: true,
+            cityName: true,
+          },
+        },
+      },
+    });
+    return newTransaction;
+  });
+};
+
+export const getTransactionByIdService = async (transactionId: string) => {
+  const transaction = await prisma.transaction.findUnique({
+    where: { id: transactionId },
+    include: {
+      event: {
+        select: {
+          id: true,
+          title: true,
+          startDate: true,
+          cityName: true,
+          venueDetail: true,
+        },
+      },
+      user: {
+        select: {
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+  if (!transaction) {
+    throw new AppError(404, "Transaksi tidak ditemukan");
+  }
+  return transaction;
+};
+
+// ================= C. CUSTOMER RIWAYAT & BUKTI BAYAR (MUTI) =================
+
 export async function getMyTransactionsService(userId: string, q: ListQuery) {
-  await sweepOverdueTransactions(); // pastikan status deadline sudah terbaru
+  await sweepOverdueTransactions();
   const where: Prisma.TransactionWhereInput = {
     userId,
     deletedAt: null,
@@ -114,7 +257,6 @@ export async function getMyTransactionsService(userId: string, q: ListQuery) {
   return { data, total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) };
 }
 
-// GET /api/transactions/:id
 export async function getMyTransactionDetailService(userId: string, trxId: string) {
   const current = await prisma.transaction.findFirst({
     where: { id: trxId, userId, deletedAt: null },
@@ -122,7 +264,6 @@ export async function getMyTransactionDetailService(userId: string, trxId: strin
   });
   if (!current) throw new AppError(404, "Transaksi tidak ditemukan");
 
-  // Cek deadline transaksi ini saat dibuka, tanpa menunggu cron
   const now = new Date();
   if (current.status === "WAITING_PAYMENT" && current.paymentDeadline < now) {
     await moveToFailedStatus(trxId, ["WAITING_PAYMENT"], "EXPIRED");
@@ -135,10 +276,9 @@ export async function getMyTransactionDetailService(userId: string, trxId: strin
     where: { id: trxId },
     include: { ...listInclude, voucher: { select: { code: true } } },
   });
-  return { ...trx, serverTime: now.toISOString() }; // serverTime untuk countdown di frontend
+  return { ...trx, serverTime: now.toISOString() };
 }
 
-// POST /api/transactions/:id/payment-proof
 export async function uploadPaymentProofService(userId: string, trxId: string, file: Express.Multer.File) {
   const trx = await prisma.transaction.findFirst({ where: { id: trxId, userId, deletedAt: null } });
   if (!trx) throw new AppError(404, "Transaksi tidak ditemukan");
@@ -146,38 +286,33 @@ export async function uploadPaymentProofService(userId: string, trxId: string, f
   const now = new Date();
   if (trx.status === "WAITING_PAYMENT" && trx.paymentDeadline < now) {
     await moveToFailedStatus(trx.id, ["WAITING_PAYMENT"], "EXPIRED");
-    throw new AppError(400, "Batas waktu 2 jam sudah lewat, transaksi otomatis expired");
+    throw new AppError(400, "Batas waktu sudah lewat, transaksi otomatis expired");
   }
   if (trx.status !== "WAITING_PAYMENT" && trx.status !== "WAITING_CONFIRM") {
     throw new AppError(400, `Transaksi berstatus ${trx.status}, bukti bayar tidak bisa diunggah`);
   }
 
-  // 1. Upload ke Cloudinary dulu
   const uploaded = await uploadImageBuffer(file.buffer, "chistix/payment-proofs");
 
-  // 2. Simpan URL + ubah status (hanya kalau status belum berubah)
   const updated = await prisma.transaction.updateMany({
     where: { id: trx.id, status: { in: ["WAITING_PAYMENT", "WAITING_CONFIRM"] } },
     data: {
       paymentProof: uploaded.url,
       status: "WAITING_CONFIRM",
-      // batas 3 hari dihitung dari upload PERTAMA, upload ulang tidak memperpanjang
       ConfirmDeadline: trx.ConfirmDeadline ?? new Date(now.getTime() + CONFIRM_WINDOW_MS),
     },
   });
   if (updated.count === 0) {
-    await deleteImage(uploaded.publicId); // jangan tinggalkan file yatim di Cloudinary
+    await deleteImage(uploaded.publicId);
     throw new AppError(409, "Status transaksi sudah berubah, silakan muat ulang halaman");
   }
 
-  // 3. Hapus file lama dari Cloudinary (syarat requirement)
   const oldId = trx.paymentProof ? publicIdFromUrl(trx.paymentProof) : null;
   if (oldId) runInBackground(deleteImage(oldId));
 
   return prisma.transaction.findUniqueOrThrow({ where: { id: trx.id } });
 }
 
-// PATCH /api/transactions/:id/cancel
 export async function cancelByCustomerService(userId: string, trxId: string) {
   const owned = await prisma.transaction.findFirst({ where: { id: trxId, userId }, select: { id: true } });
   if (!owned) throw new AppError(404, "Transaksi tidak ditemukan");
@@ -187,14 +322,29 @@ export async function cancelByCustomerService(userId: string, trxId: string) {
   return result;
 }
 
-// ================= C. ORGANIZER =================
+// ================= D. ORGANIZER TRANSACTIONS =================
 
-// GET /api/organizer/transactions
+// Format query Kiel (langsung load tanpa pagination rumit)
+export const getOrganizerTransactionService = async (organizerId: string) => {
+  return await prisma.transaction.findMany({
+    where: {
+      event: { organizerId },
+    },
+    include: {
+      user: { select: { id: true, name: true, email: true } },
+      event: { select: { id: true, title: true } },
+      voucher: { select: { code: true, discount: true, discountType: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+};
+
+// Format query Muti (dengan pagination)
 export async function getOrganizerTransactionsService(organizerId: string, q: ListQuery) {
   await sweepOverdueTransactions();
   const where: Prisma.TransactionWhereInput = {
     deletedAt: null,
-    event: { organizerId }, // hanya transaksi event miliknya
+    event: { organizerId },
     ...(q.status ? { status: q.status } : {}),
   };
   const [data, total] = await Promise.all([
@@ -213,28 +363,38 @@ export async function getOrganizerTransactionsService(organizerId: string, q: Li
   return { data, total, page: q.page, limit: q.limit, totalPages: Math.max(1, Math.ceil(total / q.limit)) };
 }
 
-async function findOrganizerTransaction(organizerId: string, trxId: string) {
-  const trx = await prisma.transaction.findFirst({
-    where: { id: trxId, deletedAt: null, event: { organizerId } },
+// Smart Accept: Mendukung parameter (organizerId, trxId) maupun (trxId, organizerId)
+export async function acceptTransactionService(first: string, second: string) {
+  let trx = await prisma.transaction.findFirst({
+    where: { id: second, deletedAt: null, event: { organizerId: first } },
     include: {
       user: { select: { email: true, name: true } },
       event: { select: { title: true } },
     },
   });
-  if (!trx) throw new AppError(404, "Transaksi tidak ditemukan");
-  return trx;
-}
+  let trxId = second;
 
-// PATCH /api/organizer/transactions/:id/accept
-export async function acceptTransactionService(organizerId: string, trxId: string) {
-  const trx = await findOrganizerTransaction(organizerId, trxId);
+  if (!trx) {
+    const swapped = await prisma.transaction.findFirst({
+      where: { id: first, deletedAt: null, event: { organizerId: second } },
+      include: {
+        user: { select: { email: true, name: true } },
+        event: { select: { title: true } },
+      },
+    });
+    if (swapped) {
+      trx = swapped;
+      trxId = first;
+    }
+  }
+
+  if (!trx) throw new AppError(404, "Transaksi tidak ditemukan");
 
   if (trx.status === "WAITING_CONFIRM" && trx.ConfirmDeadline && trx.ConfirmDeadline < new Date()) {
     await moveToFailedStatus(trxId, ["WAITING_CONFIRM"], "CANCELED");
     throw new AppError(400, "Sudah lewat 3 hari, transaksi otomatis dibatalkan");
   }
 
-  // Status DONE dan e-ticket dibuat dalam satu SQL transaction
   await prisma.$transaction(async (tx) => {
     const changed = await tx.transaction.updateMany({
       where: { id: trxId, status: "WAITING_CONFIRM" },
@@ -244,7 +404,6 @@ export async function acceptTransactionService(organizerId: string, trxId: strin
     await createETickets(tx, trx);
   }, TX_OPTIONS);
 
-  // Email dikirim di background, tidak menahan response
   runInBackground(
     sendTransactionDecisionEmail({
       to: trx.user.email,
@@ -258,12 +417,47 @@ export async function acceptTransactionService(organizerId: string, trxId: strin
   return prisma.transaction.findUniqueOrThrow({ where: { id: trxId }, include: { eTickets: true } });
 }
 
-// PATCH /api/organizer/transactions/:id/reject
-export async function rejectTransactionService(organizerId: string, trxId: string, reason?: string) {
-  const trx = await findOrganizerTransaction(organizerId, trxId);
+// Smart Reject: Mengembalikan Poin + Voucher + Kuota Tiket Event + Kirim Email
+export async function rejectTransactionService(first: string, second: string, reason?: string) {
+  let trx = await prisma.transaction.findFirst({
+    where: { id: second, deletedAt: null, event: { organizerId: first } },
+    include: {
+      user: { select: { email: true, name: true } },
+      event: { select: { title: true } },
+    },
+  });
+  let trxId = second;
+
+  if (!trx) {
+    const swapped = await prisma.transaction.findFirst({
+      where: { id: first, deletedAt: null, event: { organizerId: second } },
+      include: {
+        user: { select: { email: true, name: true } },
+        event: { select: { title: true } },
+      },
+    });
+    if (swapped) {
+      trx = swapped;
+      trxId = first;
+    }
+  }
+
+  if (!trx) throw new AppError(404, "Transaksi tidak ditemukan");
 
   const result = await moveToFailedStatus(trxId, ["WAITING_CONFIRM"], "REJECTED");
   if (!result) throw new AppError(409, "Transaksi tidak sedang menunggu konfirmasi");
+
+  // Kembalikan kuota tiket ke Event (Kiel)
+  const quotaField = trx.ticketType === "VIP" ? "vipQuota" :
+    trx.ticketType === "PRESALE" ? "presaleQuota" : "regularQuota";
+
+  await prisma.event.update({
+    where: { id: trx.eventId },
+    data: {
+      [quotaField]: { increment: trx.quantity },
+      totalQuotaTiket: { increment: trx.quantity },
+    },
+  });
 
   runInBackground(
     sendTransactionDecisionEmail({
@@ -278,8 +472,7 @@ export async function rejectTransactionService(organizerId: string, trxId: strin
   return result;
 }
 
-// ================= D. OTOMATIS =================
-// Dipanggil oleh: endpoint daftar transaksi, interval lokal, dan Vercel Cron
+// ================= E. CRON SWEEP =================
 export async function sweepOverdueTransactions() {
   const now = new Date();
   const [unpaid, unconfirmed] = await Promise.all([

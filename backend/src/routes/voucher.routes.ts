@@ -26,6 +26,7 @@ organizerVoucherRouter.get("/", async (_req, res) => {
 
 // POST /api/organizer/vouchers
 organizerVoucherRouter.post("/", async (req, res) => {
+  const organizerId = (req as any).user?.id
   sendResult(res, await createVoucherController(req.body));
 });
 

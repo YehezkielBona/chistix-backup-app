@@ -38,7 +38,7 @@ export default function VouchersPage() {
         setVouchers(
           json.data.map((v: any) => ({
             ...v,
-            eventName: v.event?.title || "-",
+            eventName: v.eventId === null ? "All Events" : (v.event?.title || "-"),
             status: v.computedStatus,
           })),
         );

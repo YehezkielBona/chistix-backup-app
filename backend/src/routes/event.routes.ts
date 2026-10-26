@@ -23,29 +23,29 @@ const organizerEventRouter = Router();
 organizerEventRouter.use(requireOrganizer);
 
 // GET /api/organizer/events -> daftar semua event
-organizerEventRouter.get("/", async (_req, res) => {
+organizerEventRouter.get("/", async (_req: Request, res: Response) => {
   sendResult(res, await getAllEventController());
 });
 
 // POST /api/organizer/events -> buat event baru
-organizerEventRouter.post("/", async (req, res) => {
+organizerEventRouter.post("/", async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
   sendResult(res, await createEventController(req.body, userId));
 });
 
 // GET /api/organizer/events/:id -> detail 1 event
-organizerEventRouter.get("/:id", async (req, res) => {
+organizerEventRouter.get("/:id", async (req: Request, res: Response) => {
   sendResult(res, await getEventDetailController(String(req.params.id)));
 });
 
 // PUT /api/organizer/events/:id -> edit event
-organizerEventRouter.put("/:id", async (req, res) => {
+organizerEventRouter.put("/:id", async (req: Request, res: Response) => {
   sendResult(res, await updateEventController(String(req.params.id), req.body));
 });
 
 // PATCH /api/organizer/events/:id/end
 
-organizerEventRouter.put("/:id/end", async (req, res) => {
+organizerEventRouter.put("/:id/end", async (req: Request, res: Response) => {
   const { id } = req.params;
   const updated = await prisma.event.update({
     where: { id: String(id) },

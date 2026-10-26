@@ -1,6 +1,11 @@
 import React from "react";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
+export interface EventOption {
+  id: string
+  title: string
+}
+
 interface TransactionFiltersProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
@@ -8,11 +13,13 @@ interface TransactionFiltersProps {
   onEventChange: (event: string) => void;
   selectedDateRange: string;
   onDateRangeChange: (range: string) => void;
+  eventsList: EventOption[]
 }
 
-export default function TransactionFilters({ activeTab, onTabChange, selectedEvent, onEventChange, selectedDateRange, onDateRangeChange }: TransactionFiltersProps) {
+export default function TransactionFilters({ activeTab, onTabChange, selectedEvent, onEventChange, selectedDateRange, onDateRangeChange, eventsList }: TransactionFiltersProps) {
   const tabs = [
     { id: "ALL", label: "All" },
+    { id: "WATING_PAYMENT", label: "Waiting Payment" },
     { id: "WAITING_CONFIRM", label: "Waiting Confirm" },
     { id: "DONE", label: "Done" },
     { id: "REJECTED", label: "Rejected" },
@@ -31,9 +38,10 @@ export default function TransactionFilters({ activeTab, onTabChange, selectedEve
               onChange={(e) => onEventChange(e.target.value)}
               className="appearance-none bg-neutral-50 border border-neutral-200 text-neutral-700 text-xs md:text-sm font-medium py-2 pl-3 pr-9 rounded-full focus:outline-none focus:border-[#BB4D00] cursor-pointer"
             >
-              <option value="All Event">All Event</option>
-              <option value="Resonance Soundfest 2026">Resonance Soundfest 2026</option>
-              <option value="Savannah Concert">Savannah Concert</option>
+              <option value="ALL">All Event</option>
+              {eventsList.map((ev) => (
+                <option key={ev.id} value={ev.id}>{ev.title}</option>
+              ))}
             </select>
             <ChevronDownIcon className="w-4 h-4 text-neutral-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -44,7 +52,7 @@ export default function TransactionFilters({ activeTab, onTabChange, selectedEve
               onChange={(e) => onDateRangeChange(e.target.value)}
               className="appearance-none bg-neutral-50 border border-neutral-200 text-neutral-700 text-xs md:text-sm font-medium py-2 pl-3 pr-8 rounded-full focus:outline-none focus:border-[#BB4D00] cursor-pointer"
             >
-              <option value="Last 30 Days">Last 30 Days</option>
+              <option value="Last 30 Days">This Week</option>
               <option value="This Month">This Month</option>
               <option value="This Year">This Year</option>
             </select>

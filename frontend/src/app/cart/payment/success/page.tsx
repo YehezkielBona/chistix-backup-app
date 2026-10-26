@@ -22,6 +22,7 @@ function PaymentSuccessContent() {
   const searchParams = useSearchParams();
 
   const eventIdParam = searchParams.get("eventId");
+  const transactionIdParam = searchParams.get("transactionId");
   const amountParam = searchParams.get("amount");
   const qtyParam = searchParams.get("qty");
   const variantParam = searchParams.get("variant");
@@ -60,6 +61,12 @@ function PaymentSuccessContent() {
         </div>
 
         <div className="space-y-3 text-xs font-medium border-t border-slate-100 pt-4 mb-2">
+          {transactionIdParam && (
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <span className="text-slate-400">Transaction ID</span>
+              <span className="font-mono font-bold text-slate-800 text-[11px]">{transactionIdParam}</span>
+            </div>
+          )}
           <div className="flex justify-between items-start">
             <span className="text-slate-400">Events</span>
             <span className="font-bold text-right text-slate-900 max-w-[200px]">

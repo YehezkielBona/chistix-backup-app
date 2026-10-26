@@ -1,127 +1,61 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Sidebar from "@/components/sidebar/SidebarDashboard";
 import ReviewSummaryCard from "@/components/dashboard/reviews/ReviewSummaryCard";
-import ReviewFilters from "@/components/dashboard/reviews/ReviewFilters";
+import ReviewFilters, {EventFilterOption} from "@/components/dashboard/reviews/ReviewFilters";
 import ReviewCard from "@/components/dashboard/reviews/ReviewCard";
 import { ReviewItem } from "@/types/review";
 import Footer from "@/components/menubar/footer";
 import NavbarOrganizer from "@/components/menubar/navbarOrganizer";
-
-const INITIAL_REVIEWS: ReviewItem[] = [
-  {
-    id: "REV-001",
-    eventId: "EVT-001",
-    eventName: "Resonance Soundfest 2026: Intimate Live Performance",
-    customerName: "Rian Pratama",
-    customerEmail: "rian@email.com",
-    ticketTier: "Presale Regular",
-    rating: 5,
-    comment:
-      "The best intimate concert this year! Being able to hear my favorite musicians up close made the atmosphere feel so magical. Crystal clear sound and not overly noisy.",
-    createdAt: "26 Dec 2026",
-    organizerReply:
-      "Thank you so much Rian! We are thrilled you enjoyed the intimate acoustic setup. See you at our next fest!",
-    repliedAt: "27 Dec 2026",
-  },
-  {
-    id: "REV-002",
-    eventId: "EVT-001",
-    eventName: "Resonance Soundfest 2026: Intimate Live Performance",
-    customerName: "Dewi Lestari",
-    customerEmail: "dewi@email.com",
-    ticketTier: "Presale VIP",
-    rating: 4,
-    comment:
-      "Great event concept with a warm atmosphere. The queue to enter at gate opening was a bit slow, but overall the artists' performances were phenomenal!",
-    createdAt: "25 Dec 2026",
-  },
-  {
-    id: "REV-003",
-    eventId: "EVT-001",
-    eventName: "Resonance Soundfest 2026: Intimate Live Performance",
-    customerName: "Fajar Sidik",
-    customerEmail: "fajar@email.com",
-    ticketTier: "Normal Regular",
-    rating: 5,
-    comment:
-      "Super satisfied! The venue was comfortable, and the audience capacity was capped so it didn't feel crowded at all. Will definitely buy tickets again next time.",
-    createdAt: "24 Dec 2026",
-  },
-  {
-    id: "REV-004",
-    eventId: "EVT-002",
-    eventName: "Night Symphony: Classic Meets Rock",
-    customerName: "Budi Santoso",
-    customerEmail: "budi@email.com",
-    ticketTier: "VIP Gold",
-    rating: 5,
-    comment:
-      "The orchestral arrangements mixed with electric rock guitars were completely unexpected. Getting goosebumps hearing classic tracks reimagined like that!",
-    createdAt: "22 Dec 2026",
-  },
-  {
-    id: "REV-005",
-    eventId: "EVT-002",
-    eventName: "Night Symphony: Classic Meets Rock",
-    customerName: "Siti Rahma",
-    customerEmail: "siti@email.com",
-    ticketTier: "Regular Bronze",
-    rating: 4,
-    comment:
-      "A unique musical experience. The blend of string instruments and rock drums meshed together brilliantly. The concert duration was just right, too.",
-    createdAt: "21 Dec 2026",
-  },
-  {
-    id: "REV-006",
-    eventId: "EVT-002",
-    eventName: "Night Symphony: Classic Meets Rock",
-    customerName: "Michael Tan",
-    customerEmail: "michael@email.com",
-    ticketTier: "Platinum VIP Pass",
-    rating: 5,
-    comment:
-      "Salute to the conductor and musicians! The sound was grandiose, even though I was initially skeptical that these genres could mix. Awesome!",
-    createdAt: "20 Dec 2026",
-  },
-  {
-    id: "REV-007",
-    eventId: "EVT-003",
-    eventName: "Indie Wave Fest: Sunset Beach Session",
-    customerName: "Nadia Putri",
-    customerEmail: "nadia@email.com",
-    ticketTier: "General Admission",
-    rating: 5,
-    comment:
-      "Beach vibes at sunset while listening to local indie bands play acoustic music... no words needed. Absolutely perfect for healing!",
-    createdAt: "18 Jan 2027",
-  },
-  {
-    id: "REV-008",
-    eventId: "EVT-003",
-    eventName: "Indie Wave Fest: Sunset Beach Session",
-    customerName: "Dimas Anggara",
-    customerEmail: "dimas@email.com",
-    ticketTier: "VIP Sunset Lounge",
-    rating: 3,
-    comment:
-      "The atmosphere and scenery were top-notch. It was just a bit disrupted by the strong beach winds, making the vocals hard to hear at times.",
-    createdAt: "17 Jan 2027",
-  },
-];
+import Pagination from "@/components/dashboard/transactions/Pagination";
 
 export default function ReviewsPage() {
-  const [reviews, setReviews] = useState<ReviewItem[]>(INITIAL_REVIEWS);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [eventsList, setEventsList] = useState<EventFilterOption[]>([]) 
+  const [loading, setLoading] = useState<boolean>(true)
+
   const [selectedEvent, setSelectedEvent] = useState<string>("ALL");
   const [activeStarFilter, setActiveStarFilter] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const itemsPerPage = 5
 
-  const eventList = Array.from(new Set(reviews.map((r) => r.eventName)));
+  const fetchReviewsAndEvents = async () => {
+    try {
+      setLoading(true)
+      const [resReviews, resEvents] = await Promise.all([
+        fetch("/api/organizer/reviews"),
+        fetch("/api/organizer/events")
+      ])
+
+      const jsonReviews = await resReviews.json()
+      if (jsonReviews.success && Array.isArray(jsonReviews.data)) {
+        setReviews(jsonReviews.data)
+      }
+      const jsonEvents = await resEvents.json()
+      if (jsonEvents.success && Array.isArray(jsonEvents.data)) {
+        setEventsList(
+          jsonEvents.data.map((e: any) => ({
+            id: String(e.id),
+            title: String(e.title),
+          }))
+        )
+      }
+
+    } catch (err) {
+      console.error("Failed load reviews:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchReviewsAndEvents()
+  }, [])
 
   const eventFilteredReviews = reviews.filter((r) =>
-    selectedEvent === "ALL" ? true : r.eventName === selectedEvent
+    selectedEvent === "ALL" ? true : r.eventId === selectedEvent
   );
-
 
   const totalReviews = eventFilteredReviews.length;
   const averageRating =
@@ -135,19 +69,35 @@ export default function ReviewsPage() {
     return { star, count, percentage };
   });
 
-
-  const displayedReviews = eventFilteredReviews.filter((r) =>
+  const starFilteredReviews = eventFilteredReviews.filter((r) =>
     activeStarFilter === null ? true : r.rating === activeStarFilter
-  );
+  )
 
-  const handleAddReply = (reviewId: string, replyText: string) => {
+  const totalItems = starFilteredReviews.length
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1
+  const paginatedReviews = starFilteredReviews.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+
+  const handleAddReply = async (reviewId: string, replyText: string) => {
+    const res = await fetch(`/api/organizer/reviews/${reviewId}/reply`, {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({replyText})
+    })
+    const json = await res.json()
+    if(!res.ok) {
+      throw new Error(json.message || "Failed to send reply.")
+    }
+
     setReviews((prev) =>
       prev.map((r) =>
         r.id === reviewId
           ? {
               ...r,
               organizerReply: replyText,
-              repliedAt: "Just now",
+              repliedAt: new Date().toISOString(),
             }
           : r
       )
@@ -181,33 +131,49 @@ export default function ReviewsPage() {
 
           <ReviewFilters
             selectedEvent={selectedEvent}
-            onEventChange={(evt) => {
-              setSelectedEvent(evt);
+            onEventChange={(evtId) => {
+              setSelectedEvent(evtId);
               setActiveStarFilter(null); // Reset filter bintang saat ganti event
+              setCurrentPage(1)
             }}
-            eventList={eventList}
+            eventList={eventsList}
             activeStarFilter={activeStarFilter}
-            onStarFilterChange={setActiveStarFilter}
+            onStarFilterChange={(star) => {
+              setActiveStarFilter(star)
+              setCurrentPage(1)
+            }}
           />
 
-          <div className="space-y-4">
-            {displayedReviews.length === 0 ? (
-              <div className="text-center py-14 text-neutral-400 text-sm bg-neutral-50 rounded-2xl border border-neutral-100">
-                Belum ada review untuk kategori bintang ini.
-              </div>
-            ) : (
-              displayedReviews.map((review) => (
-                <ReviewCard
+          {loading ? (
+            <div className="py-16 text-center text-neutral-400 text-sm">
+              Loading reviews from Customer ...
+            </div>
+          ): (
+            <div className="space-y-4">
+              {paginatedReviews.length === 0 ? (
+                <div className="text-center py-14 text-neutral-400 text-sm bg-neutral-50 rounded-2xl border border-neutral-100">
+                  No Reviews yet for the selected category.
+                </div>
+              ): (
+                paginatedReviews.map((review) => (
+                  <ReviewCard 
                   key={review.id}
                   review={review}
                   onAddReply={handleAddReply}
-                />
-              ))
-            )}
-          </div>
+                  />
+                ))
+              )}
+            </div>
+          )}
 
-          <div className="pt-6 text-xs text-neutral-400">
-            Showing {displayedReviews.length} of {totalReviews} reviews
+          <div className="mt-6">
+            <Pagination 
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            itemsPerPage={itemsPerPage}
+            onPageChange={(page) => setCurrentPage(page)}
+            />
           </div>
 
         </main>
