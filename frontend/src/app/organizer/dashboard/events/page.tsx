@@ -118,8 +118,19 @@ export default function Eventspage() {
     setEditTarget(null);
   };
 
-  const handleEndEvent = (eventId: string) => {
-    setEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, status: "ENDED" } : e)));
+  const handleEndEvent = async (eventId: string) => {
+    try {
+      const res = await fetch(`/api/organizer/events/${eventId}/end`, {
+        method: "PUT",  
+      });
+      if(res.ok) {
+        setEvents((prev) => prev.map((e) => (e.id === eventId ? {...e, status: "ENDED"} : e)))
+      } else {
+        alert("Gagal mengakhiri event, kendala di server!")
+      }
+    } catch (err) {
+      console.error(`Gagal mengakhiri event`, err)
+    }
   };
 
   const handleExecuteDelete = async () => {

@@ -16,14 +16,6 @@ import { sendResult } from "../lib/sendResult.js";
 import { requireOrganizer } from "../middlewares/role.middleware.js";
 import { Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
-// [BARU] controller publik: homepage, browse (search/filter/pagination), detail
-import {
-  homeEventsController,
-  listPublicEventsController,
-  publicEventDetailController,
-} from "../controllers/publicEvent.controller.js";
-// [BARU] review per event (aktifkan setelah review.controller.ts dibuat, Tahap 2)
-// import { eventReviewsController } from "../controllers/review.controller.js";
 
 const organizerEventRouter = Router();
 

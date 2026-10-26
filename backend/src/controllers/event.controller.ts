@@ -87,10 +87,7 @@ function normalizeEventPayload(raw: any) {
     presalePriceNormal,
     presalePriceFinal,
 
-    thumbnailImage:
-      raw.thumbnailImage && String(raw.thumbnailImage).trim().length > 0
-        ? String(raw.thumbnailImage)
-        : "/images/img-event-1-sq.jpg",
+    thumbnailImage: String(raw.thumbnailImage || ""),
     coverImages: Array.isArray(raw.coverImages) ? raw.coverImages : [],
     videoUrl: raw.videoUrl || "",
 
