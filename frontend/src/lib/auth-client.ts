@@ -14,6 +14,7 @@ export const authClient = createAuthClient({
       user: {
         role: { type: "string", required: false },
         points: { type: "number", required: false },
+        referralCode: { type: "string", required: false }, // [BARU]
       },
     }),
   ],

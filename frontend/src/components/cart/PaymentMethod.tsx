@@ -23,7 +23,8 @@ function PaymentMethodContent({ totalAmount, quantity = 1 }: PaymentMethodProps)
 
   const handleCheckout = () => {
     const eventId = searchParams.get("eventId") || "1";
-    const variant = searchParams.get("variant") || "Presale";
+    // [LAMA] const variant = searchParams.get("variant") || "Presale";
+    const variant = searchParams.get("ticketType") || searchParams.get("variant") || "Presale"; // [BARU] URL baru memakai ?ticketType=
 
     if (typeof window !== "undefined") {
       sessionStorage.setItem("chistix_total_amount", totalAmount.toString());
@@ -33,6 +34,8 @@ function PaymentMethodContent({ totalAmount, quantity = 1 }: PaymentMethodProps)
     const currentMethodObj = methods.find((m) => m.id === selectedMethod);
     const targetRoute = currentMethodObj ? currentMethodObj.route : "/cart/payment/ewallet/dana";
 
+    // TODO langkah berikutnya: sebelum pindah halaman, panggil POST /api/transactions (checkout)
+    // lalu kirim id transaksi asli ke halaman pembayaran
     router.push(
       `${targetRoute}?eventId=${eventId}&amount=${totalAmount}&qty=${quantity}&variant=${encodeURIComponent(
         variant

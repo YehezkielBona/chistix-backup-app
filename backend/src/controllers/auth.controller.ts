@@ -7,6 +7,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "../lib/prisma.js";
 import { sendVerificationEmailLink } from "./email.controller.js";
 import { sendResetPasswordEmail } from "./forgetPass.controller.js";
+import { generateReferralCode } from "../services/referral.service.js"; // [BARU]
 
 export const auth = betterAuth({
   // Harus sama dengan alamat yang dibuka di browser (localhost:3000 / domain produksi)
@@ -30,6 +31,19 @@ export const auth = betterAuth({
       // Sesuai enum Role di schema.prisma: CUSTOMER | ORGANIZER
       role: { type: "string", required: false, defaultValue: "CUSTOMER" },
       points: { type: "number", required: false, defaultValue: 0 },
+      // BARU: dibuat sistem. input: false = user tidak bisa mengisi atau mengubahnya
+      referralCode: { type: "string", required: false, input: false },
+    },
+  },
+
+  // BARU Hook: dijalankan otomatis saat user baru dibuat (daftar email maupun Google)
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => ({
+          data: { ...user, referralCode: await generateReferralCode() },
+        }),
+      },
     },
   },
 

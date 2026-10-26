@@ -65,10 +65,18 @@ organizerEventRouter.delete("/:id", async (req, res) => {
 // ---------- Router Publik (/api/events) ----------
 const publicEventRouter = Router();
 
-// GET /api/events -> daftar event publik untuk halaman Browse Event
-publicEventRouter.get("/", async (_req, res) => {
-  sendResult(res, await getAllEventController());
-});
+// URUTAN PENTING: route dengan kata tetap (/home, /suggest, /:id/reviews)
+// harus SEBELUM /:id. Kalau tidak, Express mengira "home" adalah id event.
+
+// [LAMA] GET /api/events -> semua event (termasuk DRAFT, tanpa pagination)
+// publicEventRouter.get("/", async (_req, res) => {
+//   sendResult(res, await getAllEventController());
+// });
+// [BARU] GET /api/events -> browse: search + filter + sort + pagination di backend
+publicEventRouter.get("/", listPublicEventsController);
+
+// [BARU] GET /api/events/home -> 3 baris homepage (presale, terdekat, populer)
+publicEventRouter.get("/home", homeEventsController);
 
 // GET /api/events/suggest?q=... -> saran pencarian di SearchForm navbar
 publicEventRouter.get("/suggest", async (req, res) => {
@@ -77,9 +85,15 @@ publicEventRouter.get("/suggest", async (req, res) => {
   res.status(result.statusCode).json({ suggestions: result.suggestions });
 });
 
-// GET /api/events/:id -> detail event publik
-publicEventRouter.get("/:id", async (req, res) => {
-  sendResult(res, await getEventDetailController(String(req.params.id)));
-});
+// [BARU] GET /api/events/:id/reviews -> review per event (aktifkan di Tahap 2)
+// publicEventRouter.get("/:id/reviews", eventReviewsController);
+
+// [LAMA] GET /api/events/:id -> detail event (DRAFT ikut tampil)
+// publicEventRouter.get("/:id", async (req, res) => {
+//   sendResult(res, await getEventDetailController(String(req.params.id)));
+// });
+// [BARU] GET /api/events/:id -> detail publik (DRAFT/dihapus = 404) + rating organizer
+// SELALU taruh paling bawah
+publicEventRouter.get("/:id", publicEventDetailController);
 
 export { organizerEventRouter, publicEventRouter };

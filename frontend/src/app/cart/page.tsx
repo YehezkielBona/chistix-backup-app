@@ -7,7 +7,18 @@ import CartItemTable from "@/components/cart/CartItemTable";
 import VoucherSection from "@/components/cart/VoucherSection";
 import OrderSummary from "@/components/cart/OrderSummary";
 import PaymentMethod from "@/components/cart/PaymentMethod";
-import { DUMMY_EVENTS } from "@/data/events";
+// [LAMA] import { DUMMY_EVENTS } from "@/data/events";
+import { apiFetch } from "@/lib/api"; // [BARU]
+import { authClient } from "@/lib/auth-client"; // [BARU]
+import { TICKET_LABEL, type ApiEvent, type CustomerOverview, type TicketTypeEnum } from "@/types/api"; // [BARU]
+
+const MAX_PER_ORDER = 10; // [BARU] samakan dengan backend
+
+// [BARU] terima ?ticketType=VIP (baru) atau ?variant=VIP / Regular / Presale (link lama)
+const toTicketType = (v: string | null): TicketTypeEnum | null => {
+  const up = (v ?? "").toUpperCase();
+  return up === "VIP" || up === "REGULAR" || up === "PRESALE" ? up : null;
+};
 
 function CartContent() {
   const searchParams = useSearchParams();
@@ -15,11 +26,26 @@ function CartContent() {
   // 1. Ambil query parameter dari URL
   const queryEventId = searchParams.get("eventId");
   const queryQty = searchParams.get("qty");
-  const queryVariant = searchParams.get("variant");
+  // [LAMA] const queryVariant = searchParams.get("variant");
+  const queryTicketType = toTicketType(searchParams.get("ticketType") ?? searchParams.get("variant")); // [BARU]
 
   // 2. Ambil data event asli berdasarkan eventId dari URL
-  const selectedEvent =
-    DUMMY_EVENTS.find((e) => e.id.toString() === queryEventId) || DUMMY_EVENTS[0];
+  // [LAMA] const selectedEvent =
+  // [LAMA]   DUMMY_EVENTS.find((e) => e.id.toString() === queryEventId) || DUMMY_EVENTS[0];
+  const [event, setEvent] = useState<ApiEvent | null>(null); // [BARU]
+  const [loadError, setLoadError] = useState(""); // [BARU]
+  const { data: session } = authClient.useSession(); // [BARU]
+
+  // [BARU] ambil event asli dari backend
+  useEffect(() => {
+    if (!queryEventId) {
+      setLoadError("Pilih tiket dari halaman detail event terlebih dahulu.");
+      return;
+    }
+    apiFetch<{ data: ApiEvent }>(`/api/events/${queryEventId}`)
+      .then((r) => setEvent(r.data))
+      .catch((e: Error) => setLoadError(e.message));
+  }, [queryEventId]);
 
   // 3. State Jumlah Tiket
   const [ticketQty, setTicketQty] = useState<number>(() => {
@@ -32,48 +58,85 @@ function CartContent() {
   });
 
   // 4. State Varian Tiket
-  const [ticketVariant, setTicketVariant] = useState<string>(() => {
-    if (queryVariant) return queryVariant;
+  // [LAMA] const [ticketVariant, setTicketVariant] = useState<string>(() => {
+  // [LAMA]   if (queryVariant) return queryVariant;
+  // [LAMA]   if (typeof window !== "undefined") {
+  // [LAMA]     const saved = sessionStorage.getItem("chistix_ticket_variant");
+  // [LAMA]     if (saved) return saved;
+  // [LAMA]   }
+  // [LAMA]   return "Presale";
+  // [LAMA] });
+  const [ticketType, setTicketType] = useState<TicketTypeEnum>(() => {
+    if (queryTicketType) return queryTicketType;
     if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("chistix_ticket_variant");
+      const saved = toTicketType(sessionStorage.getItem("chistix_ticket_variant"));
       if (saved) return saved;
     }
-    return "Presale";
+    return "REGULAR";
   });
 
   // 5. State Terpisah: Coupon Discount & Point Balance
-  const [couponDiscount, setCouponDiscount] = useState<number>(5000); // Default potongan kupon otomatis (< 5000)
-  const [pointBalance] = useState<number>(150);
+  // [LAMA] const [couponDiscount, setCouponDiscount] = useState<number>(5000); // Default potongan kupon otomatis (< 5000)
+  // [BARU] mulai dari 0. Kupon referral belum ada kolomnya di schema, jadi state ini
+  //        sekarang hanya diisi potongan VOUCHER dari handleApplyVoucher
+  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  // [LAMA] const [pointBalance] = useState<number>(150);
+  const [pointBalance, setPointBalance] = useState<number>(0); // [BARU] dari database
   const [isPointsClaimed, setIsPointsClaimed] = useState<boolean>(false);
+
+  // [BARU] saldo poin asli customer
+  useEffect(() => {
+    if (!session?.user) return;
+    apiFetch<{ data: CustomerOverview }>("/api/customer/overview")
+      .then((r) => setPointBalance(r.data.points ?? 0))
+      .catch(() => setPointBalance(0));
+  }, [session?.user]);
 
   // Sync state dengan URL Query Parameter saat URL berubah
   useEffect(() => {
     const qty = searchParams.get("qty");
-    const variant = searchParams.get("variant");
+    // [LAMA] const variant = searchParams.get("variant");
+    const type = toTicketType(searchParams.get("ticketType") ?? searchParams.get("variant")); // [BARU]
 
     if (qty && Number(qty) > 0) setTicketQty(Number(qty));
-    if (variant) setTicketVariant(variant);
+    // [LAMA] if (variant) setTicketVariant(variant);
+    if (type) setTicketType(type); // [BARU]
   }, [searchParams]);
 
   // 6. Penentuan Harga Berdasarkan Varian & Harga Dasar Event Dinamis
-  const getPriceByVariant = (variantName: string, baseEventPrice: number) => {
-    switch (variantName) {
-      case "VIP":
-        return baseEventPrice * 2;
-      case "Presale":
-      case "Regular":
-      default:
-        return baseEventPrice;
-    }
-  };
+  // [LAMA] harga VIP dikarang = harga dasar x 2
+  // const getPriceByVariant = (variantName: string, baseEventPrice: number) => {
+  //   switch (variantName) {
+  //     case "VIP":
+  //       return baseEventPrice * 2;
+  //     case "Presale":
+  //     case "Regular":
+  //     default:
+  //       return baseEventPrice;
+  //   }
+  // };
+  // const basePricePerTicket = getPriceByVariant(ticketVariant, selectedEvent.price);
 
-  const basePricePerTicket = getPriceByVariant(ticketVariant, selectedEvent.price);
+  // [BARU] harga & sisa kursi asli dari kategori yang dipilih
+  const selectedTier = event?.ticketTiers.find((t) => t.ticketType === ticketType) ?? null;
+  const basePricePerTicket = selectedTier?.finalPrice ?? 0;
+  const maxQty = selectedTier ? Math.min(MAX_PER_ORDER, selectedTier.remaining) : 0;
+
+  // [BARU] jumlah dari URL tidak boleh melebihi sisa kursi
+  useEffect(() => {
+    if (maxQty > 0 && ticketQty > maxQty) setTicketQty(maxQty);
+  }, [maxQty, ticketQty]);
+
   const rawSubtotal = basePricePerTicket * ticketQty;
+  // TODO (bahas dengan tim): PPN 11% tidak punya kolom di schema, jadi total di sini
+  // nanti berbeda dengan totalPrice di database saat checkout
   const taxFee = Math.round(rawSubtotal * 0.11); // PPN 11%
 
   // Nilai potongan poin (hanya aktif jika di-toggle)
-  const pointDiscountValue = isPointsClaimed ? pointBalance : 0;
-  
+  // [LAMA] const pointDiscountValue = isPointsClaimed ? pointBalance : 0;
+  // [BARU] poin tidak boleh melebihi harga setelah voucher
+  const pointDiscountValue = isPointsClaimed ? Math.min(pointBalance, Math.max(0, rawSubtotal - couponDiscount)) : 0;
+
   // Total Diskon (Kupon + Poin)
   const totalDiscount = couponDiscount + pointDiscountValue;
 
@@ -106,6 +169,18 @@ function CartContent() {
     }
   };
 
+  // [BARU] state error / loading
+  if (loadError) {
+    return (
+      <div className="w-full max-w-xl bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-600">
+        {loadError}
+      </div>
+    );
+  }
+  if (!event) {
+    return <div className="text-sm text-slate-500 py-10">Memuat data event...</div>;
+  }
+
   return (
     <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 space-y-6">
       
@@ -117,10 +192,13 @@ function CartContent() {
       </div>
 
       {/* 1. Event Ticket Section */}
-      <section>
+      {/* [LAMA] <section> */}
+      <section className="space-y-2">
         <CartItemTable
-          eventTitle={selectedEvent.title}
-          organizerName={selectedEvent.organizer || "Nusantara Orchestra Productions"}
+          // [LAMA] eventTitle={selectedEvent.title}
+          eventTitle={event.title}
+          // [LAMA] organizerName={selectedEvent.organizer || "Nusantara Orchestra Productions"}
+          organizerName={event.organizer?.name ?? "-"}
           quantity={ticketQty}
           setQuantity={(newQty) => {
             setTicketQty(newQty);
@@ -128,9 +206,23 @@ function CartContent() {
               sessionStorage.setItem("chistix_ticket_qty", newQty.toString());
             }
           }}
-          variant={ticketVariant}
+          // [LAMA] variant={ticketVariant}
+          variant={TICKET_LABEL[ticketType]}
           basePrice={basePricePerTicket}
+          maxQuantity={maxQty} // [BARU]
         />
+        {/* [BARU] keterangan stok */}
+        {selectedTier?.lowStock && (
+          <p className="text-[11px] font-semibold text-red-500">
+            Tinggal {selectedTier.remaining} tiket {TICKET_LABEL[ticketType]} lagi!
+          </p>
+        )}
+        {(!selectedTier || !selectedTier.isAvailable) && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            Tiket {TICKET_LABEL[ticketType]}{" "}
+            {selectedTier ? selectedTier.statusLabel.toLowerCase() : "tidak dijual untuk event ini"}.
+          </p>
+        )}
       </section>
 
       {/* 2. Voucher Discount Section (Tulisan "Discount Coupon" ganda sudah dihapus) */}
@@ -156,7 +248,8 @@ function CartContent() {
         {/* Informasi Poin & Switch Toggle */}
         <div className="flex items-center justify-between py-1">
           <p className="text-xs text-slate-600 font-medium">
-            You have <span className="font-bold text-amber-600">{pointBalance} Coins</span>
+            {/* [LAMA] You have <span className="font-bold text-amber-600">{pointBalance} Coins</span> */}
+            You have <span className="font-bold text-amber-600">{pointBalance.toLocaleString("id-ID")} Points</span>
           </p>
 
           <button
@@ -196,9 +289,17 @@ function CartContent() {
       </section>
 
       {/* 5. Payment Method & Checkout */}
+      {/* [LAMA] selalu tampil
       <section className="pt-2">
         <PaymentMethod totalAmount={totalAmount} quantity={ticketQty} />
       </section>
+      */}
+      {/* [BARU] hanya tampil kalau kategori tiket masih bisa dibeli */}
+      {selectedTier?.isAvailable && (
+        <section className="pt-2">
+          <PaymentMethod totalAmount={totalAmount} quantity={ticketQty} />
+        </section>
+      )}
     </div>
   );
 }

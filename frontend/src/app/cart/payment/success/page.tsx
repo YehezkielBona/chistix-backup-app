@@ -8,7 +8,7 @@ function formatEventDate(dateString?: string) {
   if (!dateString) return "15 November 2026 • 16:00";
   const d = new Date(dateString);
   if (isNaN(d.getTime())) return dateString;
-  return new Intl.DateTimeFormat("id-ID", {
+  return new Intl.DateTimeFormat("en-US", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -53,9 +53,9 @@ function PaymentSuccessContent() {
         </div>
 
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">Pembayaran Berhasil!</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Payment Successful!</h1>
           <p className="text-xs text-amber-600 font-medium mt-1">
-            Pesananmu sedang dikonfirmasi oleh organizer (maks. 2 jam).
+            Your order is being confirmed by the organizer (max. 2 hours).
           </p>
         </div>
 
@@ -102,14 +102,14 @@ function PaymentSuccessContent() {
           onClick={() => router.push("/customer/dashboard?tab=transactions")}
           className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-2xl transition cursor-pointer shadow-xs text-center block"
         >
-          Cek Status Transaksi
+          Check Transaction Status
         </button>
 
         <button
           onClick={() => router.push("/")}
           className="w-full py-3.5 bg-slate-200/70 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition cursor-pointer text-center block"
         >
-          Kembali ke Beranda
+          Back to Home
         </button>
       </div>
     </div>
