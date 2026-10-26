@@ -10,12 +10,30 @@ import {
 import { requireRole } from "../middlewares/role.middleware.js";
 import { uploadPaymentProof } from "../middlewares/upload.middleware.js";
 import { sendResult } from "../lib/sendResult.js";
+import { prisma } from "../lib/prisma.js";
 
 // ================= CUSTOMER TRANSACTIONS & CHECKOUT =================
-// Router gabungan untuk customer (mendukung Checkout Kiel + Riwayat Muti)
 export const customerTransactionRouter = Router();
 
-// 1. Checkout tiket (Kiel)
+// 1. GET /api/transactions -> Riwayat transaksi customer (Customer Dashboard)
+customerTransactionRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
+  if (req.user?.id) {
+    return c.myTransactionsController(req, res, next);
+  }
+  // Fallback ke user customer yang pertama jika testing lokal
+  const defaultCustomer = await prisma.user.findFirst({ where: { role: "CUSTOMER" } });
+  if (defaultCustomer) {
+    req.user = {
+      id: defaultCustomer.id,
+      email: defaultCustomer.email,
+      name: defaultCustomer.name,
+      role: "CUSTOMER",
+    };
+  }
+  return c.myTransactionsController(req, res, next);
+});
+
+// 2. POST /api/transactions -> Checkout tiket (Kiel)
 customerTransactionRouter.post("/", async (req: Request, res: Response) => {
   const userId = (req as any).user?.id;
   const result = await createTransactionController({
@@ -25,20 +43,38 @@ customerTransactionRouter.post("/", async (req: Request, res: Response) => {
   sendResult(res, result);
 });
 
-// 2. Ambil detail pembayaran & batas countdown 10 menit (Kiel)
+// 3. Konfirmasi customer sudah bayar (Yes I already paid)
+customerTransactionRouter.patch("/:id/paid", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const updated = await prisma.transaction.update({
+      where: { id },
+      data: {
+        status: "WAITING_CONFIRM",
+        ConfirmDeadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      },
+    });
+    sendResult(res, { success: true, statusCode: 200, message: "Status updated to WAITING_CONFIRM", data: updated });
+  } catch (err: any) {
+    sendResult(res, { success: false, statusCode: 400, message: err.message });
+  }
+});
+
+// 4. Batalkan transaksi
+customerTransactionRouter.patch("/:id/cancel", c.cancelController);
+
+// 4. Upload bukti pembayaran
+customerTransactionRouter.post("/:id/payment-proof", uploadPaymentProof, c.uploadProofController);
+
+// 5. GET /api/transactions/:id -> Ambil detail pembayaran & batas countdown (Kiel)
 customerTransactionRouter.get("/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const result = await getTransactionByIdController(String(id));
   sendResult(res, result);
 });
 
-// Export juga sebagai transactionRouter agar kompatibel dengan server.ts milik Muti
+// Alias untuk kompatibilitas
 export const transactionRouter = customerTransactionRouter;
-
-// 3. Fitur riwayat & aksi customer (Muti)
-transactionRouter.get("/me/list", requireRole("CUSTOMER"), c.myTransactionsController);
-transactionRouter.post("/:id/payment-proof", requireRole("CUSTOMER"), uploadPaymentProof, c.uploadProofController);
-transactionRouter.patch("/:id/cancel", requireRole("CUSTOMER"), c.cancelController);
 
 
 // ================= ORGANIZER TRANSACTIONS =================

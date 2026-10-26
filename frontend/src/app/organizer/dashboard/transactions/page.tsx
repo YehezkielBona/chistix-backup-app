@@ -22,8 +22,8 @@ export default function TransactionsPage() {
   const [isViewActionOpen, setIsViewActionOpen] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<string>("ALL");
-  const [selectedEvent, setSelectedEvent] = useState<string>("All Event");
-  const [selectedDateRange, setSelectedDataRange] = useState<string>("Last 30 Days");
+  const [selectedEvent, setSelectedEvent] = useState<string>("ALL");
+  const [selectedDateRange, setSelectedDataRange] = useState<string>("ALL");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 6;
 
@@ -76,6 +76,7 @@ export default function TransactionsPage() {
   }, []);
 
   const isWithinDateFilter = (createdAtString: string) => {
+    if (selectedDateRange === "ALL") return true;
     const trxDate = new Date(createdAtString);
     const now = new Date();
     const diffInMiliSeconds = now.getTime() - trxDate.getTime();
@@ -104,11 +105,6 @@ export default function TransactionsPage() {
   const totalItems = filteredData.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
   const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-  const handleOpenReview = (trx: TransactionItem) => {
-    setSelectedTrxForReview(trx);
-    setIsActionOpen(true);
-  };
 
   const handleAcceptTransaction = async (trxId: string) => {
     try {

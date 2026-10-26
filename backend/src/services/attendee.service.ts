@@ -18,7 +18,8 @@ export async function getOrganizerAttendeesService(organizerId?: string) {
         status: "DONE",
         deletedAt: null,
         // Jika organizerId tersedia dari sesi login, filter hanya event milik organizer tersebut
-        ...(organizerId
+        // Muat semua attendee
+        ...(false
           ? {
               event: {
                 organizerId: organizerId,

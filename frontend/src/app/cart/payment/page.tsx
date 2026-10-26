@@ -15,23 +15,35 @@ function QrPaymentContent() {
   const variantParam = searchParams.get("variant");
   const transactionIdParam = searchParams.get("transactionId");
 
-  const selectedEvent = DUMMY_EVENTS.find((e) => e.id.toString() === eventIdParam) || DUMMY_EVENTS[0];
+  const [eventData, setEventData] = useState<any>(null);
 
-  const totalAmount = amountParam ? parseInt(amountParam, 10) : selectedEvent.price;
+  // Ambil detail event riil dari backend agar judul tidak salah
+  useEffect(() => {
+    if (!eventIdParam) return;
+    fetch(`/api/events/${eventIdParam}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) setEventData(json.data);
+      })
+      .catch(() => {});
+  }, [eventIdParam]);
+
+  const fallbackEvent = DUMMY_EVENTS.find((e) => e.id.toString() === eventIdParam) || DUMMY_EVENTS[0];
+  const eventTitle = eventData?.title || fallbackEvent.title;
+
+  const totalAmount = amountParam ? parseInt(amountParam, 10) : fallbackEvent.price;
   const ticketQty = qtyParam ? parseInt(qtyParam, 10) : 1;
-  const ticketVariant = variantParam || "Presale";
+  const ticketVariant = variantParam || "Regular";
 
   const [transactionId, setTransactionId] = useState("");
   const [timeLeft, setTimeLeft] = useState(10 * 60);
 
   const isExpired = timeLeft <= 0;
-    useEffect(() => {
-    // Menggunakan ID resmi dari database, atau fallback jika diakses langsung
+  useEffect(() => {
     const txId = transactionIdParam || Math.random().toString(36).substring(2, 10).toUpperCase();
     setTransactionId(txId);
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
-        // Jika sisa waktu tinggal 1 detik atau kurang, hentikan interval dan kunci di angka 0
         if (prev <= 1) {
           clearInterval(timer);
           return 0;
@@ -40,7 +52,7 @@ function QrPaymentContent() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [transactionIdParam]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -50,13 +62,23 @@ function QrPaymentContent() {
 
   const formatRupiah = (num: number) => "Rp " + num.toLocaleString("id-ID");
 
-  const handleAlreadyPaid = () => {
+  const handleAlreadyPaid = async () => {
     if (isExpired) {
       alert("Payment time has expired. Please reorder your tickets.");
       return;
     }
+
+    // Update status transaksi menjadi WAITING_CONFIRM di backend
+    if (transactionId) {
+      try {
+        await fetch(`/api/transactions/${transactionId}/paid`, { method: "PATCH" });
+      } catch (err) {
+        console.error("Gagal update status transaksi:", err);
+      }
+    }
+
     router.push(
-      `/cart/payment/success?transactionId=${transactionId}&eventId=${selectedEvent.id}&amount=${totalAmount}&qty=${ticketQty}&variant=${encodeURIComponent(ticketVariant)}`
+      `/cart/payment/success?transactionId=${transactionId}&eventId=${eventIdParam || fallbackEvent.id}&amount=${totalAmount}&qty=${ticketQty}&variant=${encodeURIComponent(ticketVariant)}`
     );
   };
 
@@ -73,7 +95,6 @@ function QrPaymentContent() {
             </p>
           </div>
 
-          {/* Badge Countdown: Berubah Merah jika Waktu Habis */}
           <div className={`px-3 py-1.5 rounded-xl text-center border transition-colors ${isExpired ? "bg-rose-50 border-rose-200" : "bg-amber-50 border-amber-200"}`}>
             <div className={`text-[10px] font-semibold ${isExpired ? "text-rose-700" : "text-amber-700"}`}>{isExpired ? "Status" : "Valid for"}</div>
             <div className={`text-base font-extrabold leading-tight ${isExpired ? "text-rose-600" : "text-amber-600"}`}>{isExpired ? "EXPIRED" : formatTime(timeLeft)}</div>
@@ -86,22 +107,21 @@ function QrPaymentContent() {
             <div className="text-xs text-slate-400 font-medium">Total to Pay</div>
             <div className="text-lg font-bold text-amber-600 mt-0.5">{formatRupiah(totalAmount)}</div>
           </div>
-          <div className="text-right">
-            <div className="text-xs font-bold text-slate-800">{selectedEvent.title}</div>
+          <div className="text-right max-w-[200px]">
+            <div className="text-xs font-bold text-slate-800 truncate">{eventTitle}</div>
             <div className="text-[11px] text-slate-400">
               {ticketQty}x {ticketVariant}
             </div>
           </div>
         </div>
 
-        {/* Kotak QR Code dengan Lapisan Kunci (Overlay) jika Expired */}
+        {/* Kotak QR Code */}
         <div className="text-center space-y-3 py-2">
           <div className="relative w-52 h-52 mx-auto bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs flex flex-col items-center justify-center overflow-hidden">
             <div className={`w-full h-full bg-white rounded-xl flex flex-col items-center justify-center border border-slate-100 transition-all ${isExpired ? "blur-xs opacity-25" : ""}`}>
               <QRCodeSVG value={qrisPayload} size={160} level="H" includeMargin={true} />
             </div>
 
-            {/* Lapisan Teks Expired di Atas QR Code */}
             {isExpired && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-4 text-center">
                 <span className="text-xs font-bold text-rose-600 uppercase tracking-wider">Payment time has expired!</span>
@@ -115,14 +135,12 @@ function QrPaymentContent() {
         {/* Tombol Aksi Bawah */}
         <div className="space-y-2.5 pt-2">
           {isExpired ? (
-            /* Jika Expired: Tombol Berganti Menjadi Pesan Ulang */
-            <button onClick={() => router.push(`/cart?eventId=${selectedEvent.id}`)} className="w-full py-3 bg-[#EA580C] hover:bg-[#BB4D00] text-white font-bold text-sm rounded-xl transition cursor-pointer shadow-xs">
+            <button onClick={() => router.push(`/cart?eventId=${eventIdParam || fallbackEvent.id}`)} className="w-full py-3 bg-[#EA580C] hover:bg-[#BB4D00] text-white font-bold text-sm rounded-xl transition cursor-pointer shadow-xs">
               Reorder Ticket!
             </button>
           ) : (
-            /* Jika Masih Aktif: Tombol Bayar Normal */
             <button onClick={handleAlreadyPaid} className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition cursor-pointer shadow-xs">
-              Yes i already paid!
+              Yes I already paid!
             </button>
           )}
 

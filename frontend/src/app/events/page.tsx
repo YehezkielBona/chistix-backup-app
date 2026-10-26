@@ -15,6 +15,7 @@ import { useDebounce } from '@/lib/useDebounce'; // [BARU]
 import { toEventCard } from '@/lib/eventMapper'; // [BARU]
 import type { ApiEvent, Paged } from '@/types/api'; // [BARU]
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import NavbarCust from '@/components/menubar/navbarCust';
 
 // [BARU] nilai sort di UI -> nilai sort yang diterima backend
 const SORT_MAP: Record<string, string> = {
@@ -158,7 +159,7 @@ function EventsContent() {
   return (
     <div className="min-h-screen bg-[#FAF8F5] flex flex-col justify-between">
       {/* Header Navbar */}
-      <Navbar />
+      <NavbarCust />
 
       <main className="max-w-6xl mx-auto px-4 py-8 w-full">
         <div className="flex flex-col md:flex-row gap-6 items-start">

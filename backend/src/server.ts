@@ -14,6 +14,7 @@ import { organizerReviewRouter, reviewRouter, eventReviewRouter } from "./routes
 import { regionRouter, uploadRouter } from "./routes/region.routes.js";
 import { referralRouter, customerRouter } from "./routes/customer.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
+import { attachSession } from "./middlewares/role.middleware.js";
 import { initCronJobs } from "./services/cron.service.js";
 import { sweepOverdueTransactions } from "./services/transaction.service.js";
 
@@ -43,6 +44,9 @@ app.all("/api/auth/*splat", toNodeHandler(auth));
 
 // 3. Body Parser JSON untuk semua endpoint REST lainnya
 app.use(express.json({ limit: "10mb" }));
+
+// Otomatis pasang session login user jika ada cookie/token aktif
+app.use(attachSession);
 
 // 4. Endpoint cek kesehatan server
 app.get("/api/health", (_req, res) => {

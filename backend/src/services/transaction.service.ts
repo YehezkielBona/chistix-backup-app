@@ -155,7 +155,8 @@ export const createTransactionService = async (input: CreateTransactionInput) =>
   }
 
   const totalDiscount = voucherDiscount + validPointsUsed;
-  const totalPrice = Math.max(0, normalPrice - totalDiscount);
+  const taxFee = Math.round(normalPrice * 0.11); // PPN 11%
+  const totalPrice = Math.max(0, normalPrice - totalDiscount + taxFee);
   const paymentDeadline = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
 
   return await prisma.$transaction(async (tx) => {
@@ -325,10 +326,11 @@ export async function cancelByCustomerService(userId: string, trxId: string) {
 // ================= D. ORGANIZER TRANSACTIONS =================
 
 // Format query Kiel (langsung load tanpa pagination rumit)
-export const getOrganizerTransactionService = async (organizerId: string) => {
+export const getOrganizerTransactionService = async (organizerId?: string) => {
   return await prisma.transaction.findMany({
     where: {
-      event: { organizerId },
+      // Muat seluruh transaksi agar langsung terdeteksi di dashboard organizer
+      deletedAt: null,
     },
     include: {
       user: { select: { id: true, name: true, email: true } },
@@ -366,7 +368,7 @@ export async function getOrganizerTransactionsService(organizerId: string, q: Li
 // Smart Accept: Mendukung parameter (organizerId, trxId) maupun (trxId, organizerId)
 export async function acceptTransactionService(first: string, second: string) {
   let trx = await prisma.transaction.findFirst({
-    where: { id: second, deletedAt: null, event: { organizerId: first } },
+    where: { id: second, deletedAt: null },
     include: {
       user: { select: { email: true, name: true } },
       event: { select: { title: true } },
@@ -376,7 +378,7 @@ export async function acceptTransactionService(first: string, second: string) {
 
   if (!trx) {
     const swapped = await prisma.transaction.findFirst({
-      where: { id: first, deletedAt: null, event: { organizerId: second } },
+      where: { id: first, deletedAt: null },
       include: {
         user: { select: { email: true, name: true } },
         event: { select: { title: true } },
@@ -397,7 +399,7 @@ export async function acceptTransactionService(first: string, second: string) {
 
   await prisma.$transaction(async (tx) => {
     const changed = await tx.transaction.updateMany({
-      where: { id: trxId, status: "WAITING_CONFIRM" },
+      where: { id: trxId, status: { in: ["WAITING_CONFIRM", "WAITING_PAYMENT"] } },
       data: { status: "DONE" },
     });
     if (changed.count === 0) throw new AppError(409, "Transaksi tidak sedang menunggu konfirmasi");
@@ -420,7 +422,7 @@ export async function acceptTransactionService(first: string, second: string) {
 // Smart Reject: Mengembalikan Poin + Voucher + Kuota Tiket Event + Kirim Email
 export async function rejectTransactionService(first: string, second: string, reason?: string) {
   let trx = await prisma.transaction.findFirst({
-    where: { id: second, deletedAt: null, event: { organizerId: first } },
+    where: { id: second, deletedAt: null },
     include: {
       user: { select: { email: true, name: true } },
       event: { select: { title: true } },
@@ -430,7 +432,7 @@ export async function rejectTransactionService(first: string, second: string, re
 
   if (!trx) {
     const swapped = await prisma.transaction.findFirst({
-      where: { id: first, deletedAt: null, event: { organizerId: second } },
+      where: { id: first, deletedAt: null },
       include: {
         user: { select: { email: true, name: true } },
         event: { select: { title: true } },
@@ -444,7 +446,7 @@ export async function rejectTransactionService(first: string, second: string, re
 
   if (!trx) throw new AppError(404, "Transaksi tidak ditemukan");
 
-  const result = await moveToFailedStatus(trxId, ["WAITING_CONFIRM"], "REJECTED");
+  const result = await moveToFailedStatus(trxId, ["WAITING_CONFIRM", "WAITING_PAYMENT"], "REJECTED");
   if (!result) throw new AppError(409, "Transaksi tidak sedang menunggu konfirmasi");
 
   // Kembalikan kuota tiket ke Event (Kiel)

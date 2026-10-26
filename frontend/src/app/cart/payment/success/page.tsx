@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { DUMMY_EVENTS } from "@/data/events";
 
@@ -26,14 +26,36 @@ function PaymentSuccessContent() {
   const amountParam = searchParams.get("amount");
   const qtyParam = searchParams.get("qty");
   const variantParam = searchParams.get("variant");
-  const customerParam = searchParams.get("customer") || "mutiara";
+  const customerParam = searchParams.get("customer");
 
-  const selectedEvent =
+  const [trxData, setTrxData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!transactionIdParam) return;
+    fetch(`/api/transactions/${transactionIdParam}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setTrxData(json.data);
+        }
+      })
+      .catch((err) => console.error("Failed load transaction detail:", err));
+  }, [transactionIdParam]);
+
+  const fallbackEvent =
     DUMMY_EVENTS.find((e) => e.id.toString() === eventIdParam) || DUMMY_EVENTS[0];
 
-  const totalAmount = amountParam ? parseInt(amountParam, 10) : selectedEvent.price;
-  const ticketQty = qtyParam ? parseInt(qtyParam, 10) : 1;
-  const ticketVariant = variantParam || "Presale";
+  const eventTitle = trxData?.event?.title || fallbackEvent.title;
+  const eventDate = trxData?.event?.startDate || fallbackEvent.date;
+  const eventLocation = trxData?.event?.venueDetail 
+    ? `${trxData.event.venueDetail}, ${trxData.event.cityName}` 
+    : (fallbackEvent.location || "Jakarta, Indonesia");
+  const customerName = trxData?.user?.name || customerParam || "Customer";
+  const ticketVariant = trxData?.ticketType || variantParam || "Regular";
+  const ticketQty = trxData?.quantity || (qtyParam ? parseInt(qtyParam, 10) : 1);
+  
+  // Utamakan amountParam dari URL (yang sudah include tax 11%) atau totalPrice dari DB
+  const totalAmount = amountParam ? parseInt(amountParam, 10) : (trxData?.totalPrice || fallbackEvent.price);
 
   const formatRupiah = (num: number) => "Rp " + num.toLocaleString("id-ID");
 
@@ -67,15 +89,15 @@ function PaymentSuccessContent() {
               <span className="font-mono font-bold text-slate-800 text-[11px]">{transactionIdParam}</span>
             </div>
           )}
-          <div className="flex justify-between items-start">
-            <span className="text-slate-400">Events</span>
-            <span className="font-bold text-right text-slate-900 max-w-[200px]">
-              {selectedEvent.title}
+          <div className="flex justify-between items-start gap-4">
+            <span className="text-slate-400 shrink-0">Events</span>
+            <span className="font-bold text-right text-slate-900 max-w-[240px] leading-snug break-words">
+              {eventTitle}
             </span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Customer</span>
-            <span className="font-bold text-slate-900">{customerParam}</span>
+            <span className="font-bold text-slate-900">{customerName}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Ticket Type</span>
@@ -86,13 +108,13 @@ function PaymentSuccessContent() {
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Date & Time</span>
             <span className="font-bold text-slate-900">
-              {formatEventDate(selectedEvent.date)}
+              {formatEventDate(eventDate)}
             </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-slate-400">Location</span>
-            <span className="font-bold text-slate-900">
-              {selectedEvent.location || "Jakarta, Indonesia"}
+          <div className="flex justify-between items-start gap-4">
+            <span className="text-slate-400 shrink-0">Location</span>
+            <span className="font-bold text-slate-900 text-right max-w-[240px] leading-snug break-words">
+              {eventLocation}
             </span>
           </div>
           <div className="flex justify-between items-center pt-2 border-t border-slate-100">
