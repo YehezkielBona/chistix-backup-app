@@ -13,6 +13,7 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 import { referralRouter, customerRouter } from "./routes/customer.routes.js"; // [BARU] Tahap 4-5
 import { transactionRouter, organizerTransactionRouter, cronRouter } from "./routes/transaction.routes.js"; // [BARU] Tahap 6
 import { sweepOverdueTransactions } from "./services/transaction.service.js"; // [BARU] Tahap 6
+import { reviewRouter, eventReviewRouter } from "./routes/review.routes.js"; // [BARU] review
 
 export const app = express();
 
@@ -52,6 +53,8 @@ app.get("/api/health", (_req, res) => {
 
 // 5. Pasang semua Router
 app.use("/api/organizer/events", organizerEventRouter);
+app.use("/api/events", eventReviewRouter); // [BARU] GET /api/events/:id/reviews
+app.use("/api/reviews", reviewRouter);     // [BARU] review customer
 app.use("/api/events", publicEventRouter);
 app.use("/api/organizer/vouchers", organizerVoucherRouter);
 app.use("/api/vouchers", publicVoucherRouter);

@@ -64,3 +64,22 @@ export interface CustomerOverview {
     upcomingTickets: number; waitingPayment: number; eventsAttended: number;
     pendingReviews: number;
 }
+// [BARU] Review
+export interface PendingReview {
+  eventId: string;
+  title: string;
+  thumbnailImage: string;
+  startDate: string;
+  attendedAt: string | null;
+  ticketCount: number;
+}
+
+export interface MyReview {
+  id: string;
+  ratingScore: number;
+  reviewDesc: string | null;
+  reviewCustomerAt: string;
+  orgReply: string | null;
+  orgReplyAt: string | null;
+  event: { id: string; title: string; thumbnailImage: string };
+}

@@ -1,23 +1,79 @@
 "use client";
 
-import React, { useState } from "react";
+// [LAMA] import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react"; // [BARU] + useEffect, useCallback
 import { Star, CheckCircle2, Pencil, Trash2, X, Check, AlertTriangle } from "lucide-react";
 import { AttendedEvent, ReviewItem } from "@/app/customer/dashboard/page";
+import { apiFetch } from "@/lib/api"; // [BARU]
+import type { Paged, PendingReview, MyReview } from "@/types/api"; // [BARU]
 
 export interface ReviewsTabProps {
-  attendedEvents: AttendedEvent[];
-  setAttendedEvents: React.Dispatch<React.SetStateAction<AttendedEvent[]>>;
-  myReviews: ReviewItem[];
-  setMyReviews: React.Dispatch<React.SetStateAction<ReviewItem[]>>;
+  // [LAMA] props wajib berisi data dummy dari page.tsx
+  // attendedEvents: AttendedEvent[];
+  // setAttendedEvents: React.Dispatch<React.SetStateAction<AttendedEvent[]>>;
+  // myReviews: ReviewItem[];
+  // setMyReviews: React.Dispatch<React.SetStateAction<ReviewItem[]>>;
+  // [BARU] tetap diterima supaya page.tsx belum perlu diubah, tapi TIDAK dipakai lagi
+  attendedEvents?: AttendedEvent[];
+  setAttendedEvents?: React.Dispatch<React.SetStateAction<AttendedEvent[]>>;
+  myReviews?: ReviewItem[];
+  setMyReviews?: React.Dispatch<React.SetStateAction<ReviewItem[]>>;
 }
 
-export default function ReviewsTab({
-  attendedEvents,
-  setAttendedEvents,
-  myReviews,
-  setMyReviews,
-}: ReviewsTabProps) {
+// [BARU] bentuk data untuk tampilan. Nama field sengaja sama dengan versi lama
+// (title, ticketType, rating, feedback, date, imageUrl) supaya JSX hampir tidak berubah.
+interface PendingView {
+  id: string; // = eventId
+  title: string;
+  ticketType: string;
+  attendedDate: string;
+  imageUrl: string;
+}
+interface MyReviewView {
+  id: string;
+  eventId: string;
+  title: string;
+  rating: number;
+  feedback: string;
+  date: string;
+  imageUrl: string;
+  orgReply: string | null;
+}
+
+// [BARU] helper format & mapper
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" });
+
+const toPendingView = (p: PendingReview): PendingView => ({
+  id: p.eventId,
+  title: p.title,
+  // TODO schema v2: tampilkan jenis tiket (VIP/Regular/Presale)
+  ticketType: `${p.ticketCount} Ticket`,
+  attendedDate: fmtDate(p.attendedAt ?? p.startDate),
+  imageUrl: p.thumbnailImage,
+});
+
+const toMyReviewView = (r: MyReview): MyReviewView => ({
+  id: r.id,
+  eventId: r.event.id,
+  title: r.event.title,
+  rating: r.ratingScore,
+  feedback: r.reviewDesc ?? "",
+  date: fmtDate(r.reviewCustomerAt),
+  imageUrl: r.event.thumbnailImage,
+  orgReply: r.orgReply,
+});
+
+// [LAMA] export default function ReviewsTab({ attendedEvents, setAttendedEvents, myReviews, setMyReviews }: ReviewsTabProps) {
+export default function ReviewsTab(_props: ReviewsTabProps) {
   const [activeTab, setActiveTab] = useState<"need" | "my">("need");
+
+  // [BARU] data asli dari backend (menggantikan props dummy)
+  const [attendedEvents, setAttendedEvents] = useState<PendingView[]>([]);
+  const [myReviews, setMyReviews] = useState<MyReviewView[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // State Form Review Baru
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -33,86 +89,178 @@ export default function ReviewsTab({
 
   // State Modal Konfirmasi Hapus Kustom
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [reviewToDelete, setReviewToDelete] = useState<ReviewItem | null>(null);
+  // [LAMA] const [reviewToDelete, setReviewToDelete] = useState<ReviewItem | null>(null);
+  const [reviewToDelete, setReviewToDelete] = useState<MyReviewView | null>(null);
+
+  // [BARU] ambil 2 daftar sekaligus: perlu direview + review saya
+  const load = useCallback(async () => {
+    try {
+      const [pending, mine] = await Promise.all([
+        apiFetch<{ data: PendingReview[] }>("/api/reviews/pending"),
+        apiFetch<Paged<MyReview>>("/api/reviews/me?limit=50"),
+      ]);
+      setAttendedEvents(pending.data.map(toPendingView));
+      setMyReviews(mine.data.map(toMyReviewView));
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   // Submit Review Baru
-  const handleSubmit = (e: React.FormEvent, event: AttendedEvent) => {
+  // [LAMA] review hanya disimpan di state browser
+  // const handleSubmit = (e: React.FormEvent, event: AttendedEvent) => {
+  //   e.preventDefault();
+  //   if (rating === 0) return;
+  //
+  //   setSubmitted(true);
+  //
+  //   const newReview: ReviewItem = {
+  //     id: `rev-${Date.now()}`,
+  //     eventId: event.id,
+  //     title: event.title,
+  //     ticketType: event.ticketType,
+  //     rating: rating,
+  //     feedback: reviewText,
+  //     date: new Date().toLocaleDateString("en-GB", {
+  //       day: "numeric",
+  //       month: "short",
+  //       year: "numeric",
+  //     }),
+  //     imageUrl: event.imageUrl,
+  //   };
+  //
+  //   setTimeout(() => {
+  //     setMyReviews((prev) => [newReview, ...prev]);
+  //     setAttendedEvents((prev) => prev.filter((item) => item.id !== event.id));
+  //
+  //     setSubmitted(false);
+  //     setRating(0);
+  //     setReviewText("");
+  //     setSelectedEventId(null);
+  //
+  //     setActiveTab("my");
+  //   }, 1200);
+  // };
+
+  // [BARU] kirim ke backend: POST /api/reviews
+  const handleSubmit = async (e: React.FormEvent, event: PendingView) => {
     e.preventDefault();
-    if (rating === 0) return;
+    if (rating === 0 || saving) return;
+    setSaving(true);
+    try {
+      await apiFetch("/api/reviews", {
+        method: "POST",
+        body: JSON.stringify({
+          eventId: event.id,
+          ratingScore: rating,
+          reviewDesc: reviewText.trim() || undefined,
+        }),
+      });
+      setSubmitted(true); // tampilkan "Review Submitted!" sebentar
 
-    setSubmitted(true);
-
-    const newReview: ReviewItem = {
-      id: `rev-${Date.now()}`,
-      eventId: event.id,
-      title: event.title,
-      ticketType: event.ticketType,
-      rating: rating,
-      feedback: reviewText,
-      date: new Date().toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
-      imageUrl: event.imageUrl,
-    };
-
-    setTimeout(() => {
-      setMyReviews((prev) => [newReview, ...prev]);
-      setAttendedEvents((prev) => prev.filter((item) => item.id !== event.id));
-
-      setSubmitted(false);
-      setRating(0);
-      setReviewText("");
-      setSelectedEventId(null);
-
-      setActiveTab("my");
-    }, 1200);
+      setTimeout(async () => {
+        await load(); // event pindah dari "Review Event" ke "My Review"
+        setSubmitted(false);
+        setRating(0);
+        setReviewText("");
+        setSelectedEventId(null);
+        setActiveTab("my");
+      }, 1200);
+    } catch (err) {
+      setError((err as Error).message); // contoh: "Kamu sudah memberi review untuk event ini"
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Mulai Edit Review
-  const handleStartEdit = (review: ReviewItem) => {
+  // [LAMA] const handleStartEdit = (review: ReviewItem) => {
+  const handleStartEdit = (review: MyReviewView) => {
     setEditingReviewId(review.id);
     setEditRating(review.rating);
     setEditFeedback(review.feedback);
   };
 
   // Simpan Edit
-  const handleSaveEdit = (reviewId: string) => {
-    setMyReviews((prev) =>
-      prev.map((item) =>
-        item.id === reviewId
-          ? { ...item, rating: editRating, feedback: editFeedback }
-          : item
-      )
-    );
-    setEditingReviewId(null);
+  // [LAMA] hanya mengubah state browser
+  // const handleSaveEdit = (reviewId: string) => {
+  //   setMyReviews((prev) =>
+  //     prev.map((item) =>
+  //       item.id === reviewId
+  //         ? { ...item, rating: editRating, feedback: editFeedback }
+  //         : item
+  //     )
+  //   );
+  //   setEditingReviewId(null);
+  // };
+
+  // [BARU] PATCH /api/reviews/:id
+  const handleSaveEdit = async (reviewId: string) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/api/reviews/${reviewId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ ratingScore: editRating, reviewDesc: editFeedback.trim() }),
+      });
+      setEditingReviewId(null);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Trigger Munculnya Modal Kustom saat tombol hapus diklik
-  const promptDeleteReview = (review: ReviewItem) => {
+  // [LAMA] const promptDeleteReview = (review: ReviewItem) => {
+  const promptDeleteReview = (review: MyReviewView) => {
     setReviewToDelete(review);
     setShowDeleteModal(true);
   };
 
   // Konfirmasi Penghapusan (Eksekusi setelah klik tombol "Hapus" di modal kustom)
-  const confirmDeleteReview = () => {
-    if (!reviewToDelete) return;
+  // [LAMA] event dikembalikan manual ke daftar di browser
+  // const confirmDeleteReview = () => {
+  //   if (!reviewToDelete) return;
+  //
+  //   const restoredEvent: AttendedEvent = {
+  //     id: reviewToDelete.eventId,
+  //     title: reviewToDelete.title,
+  //     ticketType: reviewToDelete.ticketType || "Ticket Regular x1",
+  //     attendedDate: reviewToDelete.date,
+  //     imageUrl: reviewToDelete.imageUrl,
+  //   };
+  //
+  //   setAttendedEvents((prev) => [restoredEvent, ...prev]);
+  //   setMyReviews((prev) => prev.filter((item) => item.id !== reviewToDelete.id));
+  //
+  //   // Tutup modal
+  //   setShowDeleteModal(false);
+  //   setReviewToDelete(null);
+  // };
 
-    const restoredEvent: AttendedEvent = {
-      id: reviewToDelete.eventId,
-      title: reviewToDelete.title,
-      ticketType: reviewToDelete.ticketType || "Ticket Regular x1",
-      attendedDate: reviewToDelete.date,
-      imageUrl: reviewToDelete.imageUrl,
-    };
-
-    setAttendedEvents((prev) => [restoredEvent, ...prev]);
-    setMyReviews((prev) => prev.filter((item) => item.id !== reviewToDelete.id));
-
-    // Tutup modal
-    setShowDeleteModal(false);
-    setReviewToDelete(null);
+  // [BARU] DELETE /api/reviews/:id. Backend soft delete, event otomatis kembali ke "Review Event"
+  const confirmDeleteReview = async () => {
+    if (!reviewToDelete || saving) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/api/reviews/${reviewToDelete.id}`, { method: "DELETE" });
+      setShowDeleteModal(false);
+      setReviewToDelete(null);
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -123,6 +271,9 @@ export default function ReviewsTab({
           Share how your feelings at the experience
         </p>
       </div>
+
+      {/* [BARU] pesan error dari backend */}
+      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{error}</p>}
 
       {/* Buttons Navigation */}
       <div className="flex gap-2">
@@ -150,8 +301,13 @@ export default function ReviewsTab({
         </button>
       </div>
 
-      {/* Tab 1: Review Event */}
-      {activeTab === "need" ? (
+      {/* [BARU] loading state */}
+      {loading ? (
+        <div className="rounded-2xl border border-neutral-100 bg-white p-8 text-center text-xs text-neutral-400 shadow-xs">
+          Memuat review...
+        </div>
+      ) : activeTab === "need" ? (
+        /* Tab 1: Review Event */
         <div className="space-y-4">
           {attendedEvents.length === 0 ? (
             <div className="rounded-2xl border border-neutral-100 bg-white p-8 text-center text-xs text-neutral-500 shadow-xs">
@@ -255,10 +411,12 @@ export default function ReviewsTab({
                       <div className="flex justify-end pt-2">
                         <button
                           type="submit"
-                          disabled={selectedEventId !== event.id || rating === 0}
+                          // [LAMA] disabled={selectedEventId !== event.id || rating === 0}
+                          disabled={selectedEventId !== event.id || rating === 0 || saving}
                           className="rounded-xl bg-amber-500 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Submit Review
+                          {/* [LAMA] Submit Review */}
+                          {saving && selectedEventId === event.id ? "Sending..." : "Submit Review"}
                         </button>
                       </div>
                     </form>
@@ -340,8 +498,9 @@ export default function ReviewsTab({
                         <button
                           type="button"
                           onClick={() => handleSaveEdit(item.id)}
+                          disabled={saving} // [BARU]
                           title="Save Changes"
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                         >
                           <Check className="h-4 w-4" />
                         </button>
@@ -397,6 +556,14 @@ export default function ReviewsTab({
                     </p>
                   )
                 )}
+
+                {/* [BARU] balasan organizer (diisi dari dashboard organizer) */}
+                {item.orgReply && (
+                  <div className="rounded-xl bg-neutral-50 p-3">
+                    <p className="text-[10px] font-bold text-neutral-700">Balasan organizer</p>
+                    <p className="mt-1 text-xs text-neutral-600 leading-relaxed">{item.orgReply}</p>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -424,6 +591,7 @@ export default function ReviewsTab({
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(false)}
+                disabled={saving} // [BARU]
                 className="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 transition-colors"
               >
                 Cancel
@@ -431,9 +599,11 @@ export default function ReviewsTab({
               <button
                 type="button"
                 onClick={confirmDeleteReview}
-                className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition-colors"
+                disabled={saving} // [BARU]
+                className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition-colors disabled:opacity-50"
               >
-                Yes, Clear
+                {/* [LAMA] Yes, Clear */}
+                {saving ? "Deleting..." : "Yes, Clear"}
               </button>
             </div>
           </div>

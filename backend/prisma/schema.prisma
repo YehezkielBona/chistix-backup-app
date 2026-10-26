@@ -63,6 +63,7 @@ model User {
   sessions     Session[]
   accounts     Account[]
   events       Event[]
+  vouchers     Voucher[]
   transactions Transaction[]
   reviews      Review[]
 
@@ -124,34 +125,34 @@ model Event {
   startDate DateTime @default(now())
   endDate   DateTime @default(now())
 
-  description String  @db.Text
-  provinceId  String
+  description     String  @db.Text
+  provinceId      String
   provinceName    String
-  cityId        String
-  cityName  String
-  venueMaps   String?
-  venueDetail String
+  cityId          String
+  cityName        String
+  venueMaps       String?
+  venueDetail     String
   totalQuotaTiket Int     @default(0)
 
-  ticketType  TicketType
+  ticketType TicketType
 
-  vipQuota  Int
-  vipPriceNormal  Int
-  vipPriceFinal Int
+  vipQuota       Int
+  vipPriceNormal Int
+  vipPriceFinal  Int
 
-  regularQuota  Int
+  regularQuota       Int
   regularPriceNormal Int
   regularPriceFinal  Int
 
-  presaleQuota  Int
-  presalePriceNormal  Int
-  presalePriceFinal Int
-  
+  presaleQuota       Int
+  presalePriceNormal Int
+  presalePriceFinal  Int
+
   thumbnailImage String
   coverImages    String[] @default([])
   videoUrl       String?
 
-  eventStatus                EventStatusEnum @default(DRAFT)
+  eventStatus           EventStatusEnum @default(DRAFT)
   scheduledPublishStart DateTime?
   scheduledPublishEnd   DateTime?
 
@@ -161,20 +162,23 @@ model Event {
 
   vouchers     Voucher[]
   transactions Transaction[]
-  reviewRating      Review[]
+  reviewRating Review[]
 
-  isPresale    Boolean   @default(false)
-  isVip Boolean @default(false)
+  isPresale Boolean @default(false)
+  isVip     Boolean @default(false)
   isRegular Boolean @default(false)
 
   @@map("events")
 }
 
-
 model Voucher {
-  id      String @id @default(uuid())
-  eventId String
-  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid())
+
+  organizerId String?
+  organizer   User?   @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+
+  eventId String?
+  event   Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   code         String       @unique
   discountType DiscountType @default(PERCENTAGE)
@@ -204,15 +208,16 @@ model Transaction {
   voucherId String?
   voucher   Voucher? @relation(fields: [voucherId], references: [id])
 
-  status     TransactionStatus @default(WAITING_PAYMENT)
-  quantity   Int               @default(1)
+  status      TransactionStatus @default(WAITING_PAYMENT)
+  quantity    Int               @default(1)
+  ticketType  TicketType        @default(REGULAR)
   normalPrice Int
-  totalPrice Int
-  discPrice Int
-  pointUsed  Int               @default(0)
+  totalPrice  Int
+  discPrice   Int
+  pointUsed   Int               @default(0)
 
-  paymentProof         String?
-  paymentDeadline      DateTime
+  paymentProof    String?
+  paymentDeadline DateTime
   ConfirmDeadline DateTime?
 
   createdAt DateTime  @default(now())
@@ -232,13 +237,13 @@ model ETicket {
   ticketCode String    @unique
   isAttended Boolean   @default(false)
   attendedAt DateTime?
-  qrToken String  @unique @default(uuid())
+  qrToken    String    @unique @default(uuid())
   pdfUrl     String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-  
+
   reviews Review[]
 
   @@map("ETicket")
@@ -255,11 +260,11 @@ model Review {
   eTicketId String
   eTicket   ETicket @relation(fields: [eTicketId], references: [id])
 
-  ratingScore    Int
-  reviewDesc   String?    @db.Text
-  orgReply     String?   @db.Text
-  reviewCustomerAt DateTime
-  orgReplyAt DateTime
+  ratingScore      Int
+  reviewDesc       String?   @db.Text
+  orgReply         String?   @db.Text
+  reviewCustomerAt DateTime  @default(now())
+  orgReplyAt       DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
