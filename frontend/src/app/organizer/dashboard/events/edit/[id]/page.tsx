@@ -4,6 +4,7 @@
 // Halaman Edit Event (Dashboard Organizer)
 // Terintegrasi dengan Backend Express (GET & PUT /api/organizer/events/:id),
 // API Wilayah Emsifa, dan Cloudinary Signed Upload.
+// Mendukung Toggle Aktif/Non-Aktif Kategori Tiket (VIP, Regular, Presale).
 // ============================================================
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
@@ -67,14 +68,20 @@ export default function EditEventPage({
   const [endDate, setEndDate] = useState("");
 
   const [totalTicket, setTotalTicket] = useState<number>(0);
+
+  // State Toggle & Alokasi VIP
+  const [isVipEnabled, setIsVipEnabled] = useState<boolean>(true);
   const [vipQuota, setVipQuota] = useState<number>(0);
   const [vipPrice, setVipPrice] = useState<number>(0);
   const [vipFinalPrice, setVipFinalPrice] = useState<number>(0);
 
+  // State Toggle & Alokasi Regular
+  const [isRegularEnabled, setIsRegularEnabled] = useState<boolean>(true);
   const [regularQuota, setRegularQuota] = useState<number>(0);
   const [regularPrice, setRegularPrice] = useState<number>(0);
   const [regularFinalPrice, setRegularFinalPrice] = useState<number>(0);
 
+  // State Alokasi Presale
   const [presaleQuota, setPresaleQuota] = useState<number>(0);
   const [presalePrice, setPresalePrice] = useState<number>(0);
   const [presaleFinalPrice, setPresaleFinalPrice] = useState<number>(0);
@@ -82,6 +89,7 @@ export default function EditEventPage({
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
   const [isUploadingCovers, setIsUploadingCovers] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(true);
+  const [tierWarning, setTierWarning] = useState(false);
 
   // State untuk file lokal & preview sebelum di-upload saat Save Changes
   const [thumbFile, setThumbFile] = useState<File | null>(null);
@@ -90,16 +98,20 @@ export default function EditEventPage({
   const [coverFilesList, setCoverFilesList] = useState<File[]>([]);
   const [coverPreviews, setCoverPreviews] = useState<string[]>([]);
 
-  const allocatedQuota =
-    vipQuota + regularQuota + (form.presale?.enabled ? presaleQuota : 0);
+  // Kalkulasi Kuota yang Hanya Menghitung Kategori Tiket yang Aktif
+  const activeVipQuota = isVipEnabled ? vipQuota : 0;
+  const activeRegularQuota = isRegularEnabled ? regularQuota : 0;
+  const activePresaleQuota = form.presale?.enabled ? presaleQuota : 0;
+
+  const allocatedQuota = activeVipQuota + activeRegularQuota + activePresaleQuota;
   const remainingQuota = totalTicket - allocatedQuota;
   const isQuotaExceeded =
-  totalTicket <= 0 ||
-  vipQuota > totalTicket ||
-  regularQuota > totalTicket ||
-  (Boolean(form.presale?.enabled) && presaleQuota > totalTicket) ||
-  allocatedQuota > totalTicket ||
-  remainingQuota !== 0;
+    totalTicket <= 0 ||
+    activeVipQuota > totalTicket ||
+    activeRegularQuota > totalTicket ||
+    (Boolean(form.presale?.enabled) && activePresaleQuota > totalTicket) ||
+    allocatedQuota > totalTicket ||
+    remainingQuota !== 0;
 
   // Rumus Matematika H-1: kurangi 24 jam x 60 menit x 60 detik x 1000 ms dari startDate
   const salesCloseDate = startDate
@@ -192,11 +204,18 @@ export default function EditEventPage({
           setEndDate(formatToDatetimeLocal(evt.endDate));
           setTotalTicket(Number(evt.totalQuotaTiket ?? evt.totalTicket ?? 0));
 
-          setVipQuota(Number(evt.vipQuota ?? 0));
+          // Atur Saklar Toggle VIP & Regular berdasarkan data di Database
+          const loadedVipQuota = Number(evt.vipQuota ?? 0);
+          const loadedRegularQuota = Number(evt.regularQuota ?? 0);
+
+          setIsVipEnabled(loadedVipQuota > 0 || Boolean(evt.isVip));
+          setIsRegularEnabled(loadedRegularQuota > 0 || Boolean(evt.isRegular));
+
+          setVipQuota(loadedVipQuota);
           setVipPrice(Number(evt.vipPriceNormal ?? 0));
           setVipFinalPrice(Number(evt.vipPriceFinal ?? evt.vipPriceNormal ?? 0));
 
-          setRegularQuota(Number(evt.regularQuota ?? 0));
+          setRegularQuota(loadedRegularQuota);
           setRegularPrice(Number(evt.regularPriceNormal ?? 0));
           setRegularFinalPrice(Number(evt.regularPriceFinal ?? evt.regularPriceNormal ?? 0));
 
@@ -283,7 +302,7 @@ export default function EditEventPage({
       setModalFeedback({
         isOpen: true,
         type: "ERROR",
-        message: `Alokasi kuota tiket belum pas! Sisa kuota: ${remainingQuota} tiket. Total pembagian VIP + Regular + Presale harus tepat sama dengan ${totalTicket}!`,
+        message: `Alokasi kuota tiket belum pas! Sisa kuota: ${remainingQuota} tiket. Total pembagian tiket aktif harus tepat sama dengan ${totalTicket}!`,
       });
       return;
     }
@@ -363,15 +382,15 @@ export default function EditEventPage({
         venueDetail: form.venueDetail,
         venueMaps: form.venueMaps || "",
         totalQuotaTiket: Number(totalTicket),
-        ticketType: activePresale ? "PRESALE" : "REGULAR",
+        ticketType: activePresale ? "PRESALE" : isRegularEnabled ? "REGULAR" : "VIP",
 
-        vipQuota: Number(vipQuota),
-        vipPriceNormal: Number(vipPrice),
-        vipPriceFinal: Number(vipFinalPrice || vipPrice),
+        vipQuota: isVipEnabled ? Number(vipQuota) : 0,
+        vipPriceNormal: isVipEnabled ? Number(vipPrice) : 0,
+        vipPriceFinal: isVipEnabled ? Number(vipFinalPrice || vipPrice) : 0,
 
-        regularQuota: Number(regularQuota),
-        regularPriceNormal: Number(regularPrice),
-        regularPriceFinal: Number(regularFinalPrice || regularPrice),
+        regularQuota: isRegularEnabled ? Number(regularQuota) : 0,
+        regularPriceNormal: isRegularEnabled ? Number(regularPrice) : 0,
+        regularPriceFinal: isRegularEnabled ? Number(regularFinalPrice || regularPrice) : 0,
 
         presaleQuota: activePresale ? Number(presaleQuota) : 0,
         presalePriceNormal: activePresale ? Number(presalePrice || regularPrice) : 0,
@@ -641,11 +660,14 @@ export default function EditEventPage({
                           onChange={(e) => {
                             const val = Number(e.target.value);
                             setTotalTicket(val);
+                            if (val > 0) {
+                              setTierWarning(false);
+                            }
                             setVipQuota(0);
                             setRegularQuota(0);
                             setPresaleQuota(0);
                           }}
-                          className="w-36 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#BB4D00] bg-neutral-50 font-bold"
+                          className="w-36 border border-neutral-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#BB4D00] bg-neutral-50 font-bold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           required
                         />
                         <span
@@ -662,108 +684,200 @@ export default function EditEventPage({
                           {totalTicket === 0
                             ? "Isi total kuota dahulu"
                             : remainingQuota === 0
-                            ? "✅ Kuota pas terbagi!"
+                            ? "Kuota pas terbagi!"
                             : remainingQuota < 0
-                            ? `⚠️ Kelebihan ${Math.abs(remainingQuota)} tiket!`
+                            ? `Kelebihan ${Math.abs(remainingQuota)} tiket!`
                             : `Sisa Kuota: ${remainingQuota} tiket`}
                         </span>
                       </div>
                     </div>
 
+                    {tierWarning && (!totalTicket || totalTicket <= 0) && (
+                      <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold animate-pulse">
+                        <span>You must fill the Total Ticket Amount, before you fill the Ticket Tier</span>
+                      </div>
+                    )}
+
                     <div className="border-t border-neutral-100 pt-2" />
 
-                    {/* VIP Tier */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                      <label className="text-sm font-medium text-neutral-700 pl-4">
-                        VIP <span className="text-red-500">*</span>
-                      </label>
-                      <div className="sm:col-span-2 flex flex-wrap gap-3 items-center text-xs text-neutral-500">
-                        <input
-                          type="number"
-                          min={0}
-                          max={vipQuota + remainingQuota}
-                          disabled={totalTicket <= 0}
-                          placeholder="Quota"
-                          value={vipQuota || ""}
-                          onChange={(e) => setVipQuota(Number(e.target.value))}
-                          className="w-20 border border-neutral-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm disabled:opacity-40 font-semibold text-neutral-900"
+                    {/* TICKET TIERS WRAPPER */}
+                    <div className={`relative space-y-4 ${!totalTicket || totalTicket <= 0 ? "opacity-60" : ""}`}>
+                      {(!totalTicket || totalTicket <= 0) && (
+                        <div
+                          onClick={() => setTierWarning(true)}
+                          className="absolute inset-0 z-20 cursor-not-allowed bg-transparent"
+                          title="You must fill the Total Ticket Amount, before you fill the Ticket Tier"
                         />
-                        <span>Normal Price</span>
-                        <div className="relative flex items-center">
-                          <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                            IDR
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            placeholder="0"
-                            value={vipPrice || ""}
-                            onChange={(e) => setVipPrice(Number(e.target.value))}
-                            className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm"
-                          />
+                      )}
+
+                      {/* 3. VIP TIER DENGAN TOGGLE */}
+                    <div className="space-y-3 p-4 rounded-xl border border-neutral-200/80 bg-neutral-50/50">
+                      <div className="flex items-center justify-between">
+                        <div className="pl-2">
+                          <span className="text-sm font-bold text-neutral-800">VIP Ticket</span>
+                          <p className="text-xs text-neutral-400">Aktifkan jika event menyediakan tiket kategori VIP</p>
                         </div>
-                        <span>Final Price</span>
-                        <div className="relative flex items-center">
-                          <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                            IDR
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            placeholder="0"
-                            value={vipFinalPrice || ""}
-                            onChange={(e) => setVipFinalPrice(Number(e.target.value))}
-                            className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm"
+
+                        {/* Tombol Toggle Saklar VIP */}
+                        <button
+                          type="button"
+                          disabled={!totalTicket || totalTicket <= 0}
+                          onClick={() => {
+                            const nextState = !isVipEnabled;
+                            setIsVipEnabled(nextState);
+                            if (!nextState) {
+                              setVipQuota(0);
+                              setVipPrice(0);
+                              setVipFinalPrice(0);
+                            }
+                          }}
+                          className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 ${
+                            isVipEnabled ? "bg-[#EA580C]" : "bg-neutral-300"
+                          }`}
+                        >
+                          <div
+                            className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+                              isVipEnabled ? "translate-x-5" : "translate-x-0"
+                            }`}
                           />
-                        </div>
+                        </button>
                       </div>
+
+                      {/* Form Input VIP (Hanya Tampil Jika Toggle Aktif) */}
+                      {isVipEnabled && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center pt-3 border-t border-neutral-200/60">
+                          <label className="text-xs font-semibold text-neutral-600 pl-2">Alokasi & Harga VIP</label>
+                          <div className="sm:col-span-2 flex flex-wrap gap-2.5 items-center text-xs text-neutral-500">
+                            <input
+                              type="number"
+                              min={0}
+                              max={vipQuota + remainingQuota}
+                              disabled={!totalTicket || totalTicket <= 0}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              placeholder="Quota"
+                              value={vipQuota || ""}
+                              onChange={(e) => setVipQuota(Number(e.target.value))}
+                              className="w-20 border border-neutral-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-white text-sm font-semibold text-neutral-900"
+                              required
+                            />
+                            <span>Normal Price</span>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
+                              <input
+                                type="number"
+                                min={0}
+                                disabled={!totalTicket || totalTicket <= 0}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                placeholder="0"
+                                value={vipPrice || ""}
+                                onChange={(e) => setVipPrice(Number(e.target.value))}
+                                className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-white text-sm"
+                                required
+                              />
+                            </div>
+                            <span>Final Price</span>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
+                              <input
+                                type="number"
+                                min={0}
+                                disabled={!totalTicket || totalTicket <= 0}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                placeholder="0"
+                                value={vipFinalPrice || ""}
+                                onChange={(e) => setVipFinalPrice(Number(e.target.value))}
+                                className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-white text-sm"
+                                required
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Regular Tier */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center">
-                      <label className="text-sm font-medium text-neutral-700 pl-4">
-                        Regular <span className="text-red-500">*</span>
-                      </label>
-                      <div className="sm:col-span-2 flex flex-wrap gap-3 items-center text-xs text-neutral-500">
-                        <input
-                          type="number"
-                          min={0}
-                          max={regularQuota + remainingQuota}
-                          disabled={totalTicket <= 0}
-                          placeholder="Quota"
-                          value={regularQuota || ""}
-                          onChange={(e) => setRegularQuota(Number(e.target.value))}
-                          className="w-20 border border-neutral-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm disabled:opacity-40 font-semibold text-neutral-900"
-                        />
-                        <span>Normal Price</span>
-                        <div className="relative flex items-center">
-                          <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                            IDR
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            placeholder="0"
-                            value={regularPrice || ""}
-                            onChange={(e) => setRegularPrice(Number(e.target.value))}
-                            className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm"
-                          />
+                    {/* 4. REGULAR TIER DENGAN TOGGLE */}
+                    <div className="space-y-3 p-4 rounded-xl border border-neutral-200/80 bg-neutral-50/50">
+                      <div className="flex items-center justify-between">
+                        <div className="pl-2">
+                          <span className="text-sm font-bold text-neutral-800">Regular Ticket</span>
+                          <p className="text-xs text-neutral-400">Tiket standar umum untuk penonton</p>
                         </div>
-                        <span>Final Price</span>
-                        <div className="relative flex items-center">
-                          <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">
-                            IDR
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            placeholder="0"
-                            value={regularFinalPrice || ""}
-                            onChange={(e) => setRegularFinalPrice(Number(e.target.value))}
-                            className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-neutral-50 text-sm"
+
+                        {/* Tombol Toggle Saklar Regular */}
+                        <button
+                          type="button"
+                          disabled={!totalTicket || totalTicket <= 0}
+                          onClick={() => {
+                            const nextState = !isRegularEnabled;
+                            setIsRegularEnabled(nextState);
+                            if (!nextState) {
+                              setRegularQuota(0);
+                              setRegularPrice(0);
+                              setRegularFinalPrice(0);
+                            }
+                          }}
+                          className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 ${
+                            isRegularEnabled ? "bg-[#EA580C]" : "bg-neutral-300"
+                          }`}
+                        >
+                          <div
+                            className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${
+                              isRegularEnabled ? "translate-x-5" : "translate-x-0"
+                            }`}
                           />
-                        </div>
+                        </button>
                       </div>
+
+                      {/* Form Input Regular (Hanya Tampil Jika Toggle Aktif) */}
+                      {isRegularEnabled && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-center pt-3 border-t border-neutral-200/60">
+                          <label className="text-xs font-semibold text-neutral-600 pl-2">Alokasi & Harga Regular</label>
+                          <div className="sm:col-span-2 flex flex-wrap gap-2.5 items-center text-xs text-neutral-500">
+                            <input
+                              type="number"
+                              min={0}
+                              max={regularQuota + remainingQuota}
+                              disabled={!totalTicket || totalTicket <= 0}
+                              onWheel={(e) => e.currentTarget.blur()}
+                              placeholder="Quota"
+                              value={regularQuota || ""}
+                              onChange={(e) => setRegularQuota(Number(e.target.value))}
+                              className="w-20 border border-neutral-200 rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-white text-sm font-semibold text-neutral-900"
+                              required
+                            />
+                            <span>Normal Price</span>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
+                              <input
+                                type="number"
+                                min={0}
+                                disabled={!totalTicket || totalTicket <= 0}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                placeholder="0"
+                                value={regularPrice || ""}
+                                onChange={(e) => setRegularPrice(Number(e.target.value))}
+                                className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-white text-sm"
+                                required
+                              />
+                            </div>
+                            <span>Final Price</span>
+                            <div className="relative flex items-center">
+                              <span className="absolute left-2.5 text-xs text-neutral-400 font-semibold">IDR</span>
+                              <input
+                                type="number"
+                                min={0}
+                                disabled={!totalTicket || totalTicket <= 0}
+                                onWheel={(e) => e.currentTarget.blur()}
+                                placeholder="0"
+                                value={regularFinalPrice || ""}
+                                onChange={(e) => setRegularFinalPrice(Number(e.target.value))}
+                                className="w-32 border border-neutral-200 rounded-lg pl-10 pr-2.5 py-2 focus:outline-none focus:border-[#BB4D00] bg-white text-sm"
+                                required
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Panel Informasi Jadwal Penjualan VIP & Regular */}
@@ -795,14 +909,29 @@ export default function EditEventPage({
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() =>
+                          disabled={!totalTicket || totalTicket <= 0}
+                          onClick={() => {
+                            if (!totalTicket || totalTicket <= 0) {
+                              setTierWarning(true);
+                              return;
+                            }
+                            const nextState = !form.presale?.enabled;
                             handleChange("presale", {
                               ...form.presale,
-                              enabled: !form.presale?.enabled,
-                            })
-                          }
-                          className={`relative w-10 h-6 rounded-full transition-colors cursor-pointer ${
-                            form.presale?.enabled ? "bg-[#EA580C]" : "bg-neutral-200"
+                              enabled: nextState,
+                            });
+                            if (!nextState) {
+                              setPresaleQuota(0);
+                              setPresalePrice(0);
+                              setPresaleFinalPrice(0);
+                            }
+                          }}
+                          className={`relative w-10 h-6 rounded-full transition-colors ${
+                            !totalTicket || totalTicket <= 0
+                              ? "opacity-50 cursor-not-allowed bg-neutral-200"
+                              : form.presale?.enabled
+                              ? "bg-[#EA580C] cursor-pointer"
+                              : "bg-neutral-200 cursor-pointer"
                           }`}
                         >
                           <span
@@ -867,6 +996,8 @@ export default function EditEventPage({
                                 handleChange("presale", {
                                   ...form.presale,
                                   startDate: e.target.value,
+                                  endDate: form.presale?.endDate || "",
+                                  enabled: true,
                                 })
                               }
                               className="border border-neutral-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-[#BB4D00] bg-white"
@@ -880,6 +1011,8 @@ export default function EditEventPage({
                                 handleChange("presale", {
                                   ...form.presale,
                                   endDate: e.target.value,
+                                  startDate: form.presale?.startDate || "",
+                                  enabled: true,
                                 })
                               }
                               className="border border-neutral-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-[#BB4D00] bg-white"
@@ -888,6 +1021,8 @@ export default function EditEventPage({
                         </div>
                       </div>
                     )}
+                  </div>
+                  {/* End TICKET TIERS WRAPPER */}
 
                     {/* Thumbnail Image (Cloudinary) */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 items-start">
