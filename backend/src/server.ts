@@ -10,6 +10,7 @@ import { organizerEventRouter, publicEventRouter } from "./routes/event.routes.j
 import { organizerVoucherRouter, publicVoucherRouter } from "./routes/voucher.routes.js";
 import { organizerTransactionRouter } from "./routes/transaction.routes.js";
 import { organizerAttendeeRouter } from "./routes/attendee.routes.js";
+import { organizerReviewRouter } from "./routes/review.routes.js";
 import { regionRouter, uploadRouter } from "./routes/region.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { initCronJobs } from "./services/cron.service.js";
@@ -57,6 +58,7 @@ app.use("/api/organizer/vouchers", organizerVoucherRouter);
 app.use("/api/vouchers", publicVoucherRouter);
 app.use("/api/organizer/transactions", organizerTransactionRouter);
 app.use("/api/organizer/attendees", organizerAttendeeRouter);
+app.use("/api/organizer/reviews", organizerReviewRouter)
 app.use("/api/regions", regionRouter);
 app.use("/api/upload", uploadRouter);
 

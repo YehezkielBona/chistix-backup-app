@@ -63,6 +63,7 @@ model User {
   sessions     Session[]
   accounts     Account[]
   events       Event[]
+  vouchers     Voucher[]
   transactions Transaction[]
   reviews      Review[]
 
@@ -171,9 +172,13 @@ model Event {
 }
 
 model Voucher {
-  id      String @id @default(uuid())
-  eventId String
-  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid())
+
+  organizerId String?
+  organizer   User?   @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+
+  eventId String?
+  event   Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   code         String       @unique
   discountType DiscountType @default(PERCENTAGE)
@@ -256,10 +261,10 @@ model Review {
   eTicket   ETicket @relation(fields: [eTicketId], references: [id])
 
   ratingScore      Int
-  reviewDesc       String?  @db.Text
-  orgReply         String?  @db.Text
-  reviewCustomerAt DateTime
-  orgReplyAt       DateTime
+  reviewDesc       String?   @db.Text
+  orgReply         String?   @db.Text
+  reviewCustomerAt DateTime  @default(now())
+  orgReplyAt       DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
