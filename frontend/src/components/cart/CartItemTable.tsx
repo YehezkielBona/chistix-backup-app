@@ -9,6 +9,7 @@ interface CartItemTableProps {
   setQuantity: (qty: number) => void;
   variant?: string;
   basePrice: number;
+  maxQuantity?: number; // [BARU] sisa kursi / batas per transaksi
 }
 
 export default function CartItemTable({
@@ -18,6 +19,7 @@ export default function CartItemTable({
   setQuantity,
   variant = "Presale",
   basePrice,
+  maxQuantity, // [BARU]
 }: CartItemTableProps) {
   const totalPrice = basePrice * quantity;
 
@@ -28,8 +30,11 @@ export default function CartItemTable({
   };
 
   const handleIncrease = () => {
-    setQuantity(quantity + 1);
+    // [LAMA] setQuantity(quantity + 1);
+    if (maxQuantity === undefined || quantity < maxQuantity) setQuantity(quantity + 1); // [BARU] tidak melebihi sisa kursi
   };
+
+  const isMax = maxQuantity !== undefined && quantity >= maxQuantity; // [BARU]
 
   const formatRupiah = (num: number) => "Rp " + num.toLocaleString("id-ID");
 
@@ -71,7 +76,9 @@ export default function CartItemTable({
             <button
               type="button"
               onClick={handleIncrease}
-              className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+              disabled={isMax} // [BARU]
+              // [LAMA] className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+              className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-200 disabled:opacity-40 transition cursor-pointer"
             >
               +
             </button>
@@ -86,6 +93,12 @@ export default function CartItemTable({
             </div>
           </div>
         </div>
+
+        {/* [LAMA] keterangan batas jumlah (disembunyikan, batas tetap berlaku di tombol +)
+        {maxQuantity !== undefined && maxQuantity > 0 && (
+          <p className="text-[10px] text-slate-400">Maks. {maxQuantity} tiket per transaksi</p>
+        )}
+        */}
       </div>
     </div>
   );

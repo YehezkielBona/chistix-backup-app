@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation"; // [BARU] pindah ke tab Events
 import UploadPaymentModal from "./UploadPaymentModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog"; // [BARU]
 import { apiFetch } from "@/lib/api"; // [BARU]
-import { STATUS_LABEL, type ApiTransaction, type Paged, type TrxStatus } from "@/types/api"; // [BARU]
+// [LAMA] import { STATUS_LABEL, type ApiTransaction, type Paged, type TrxStatus } from "@/types/api"; // [BARU]
+import { STATUS_LABEL, TICKET_LABEL, type ApiTransaction, type Paged, type TrxStatus } from "@/types/api"; // [BARU] + TICKET_LABEL
 
 // [LAMA] bentuk data dummy
 // interface TransactionItem {
@@ -169,7 +170,8 @@ export default function TransactionsTab(_props: TransactionsTabProps) {
                   </td>
                   {/* [LAMA] {trx.ticketType} */}
                   {/* TODO schema v2: tampilkan trx.ticketType */}
-                  <td className="py-4 text-center px-1 truncate">{trx.ticketType ?? "-"}</td>
+                  {/* [LAMA] <td className="py-4 text-center px-1 truncate">{trx.ticketType ?? "-"}</td> */}
+                  <td className="py-4 text-center px-1 truncate">{TICKET_LABEL[trx.ticketType] ?? "-"}</td>
                   {/* [LAMA] {trx.qty} */}
                   <td className="py-4 text-center px-1">{trx.quantity}</td>
                   <td

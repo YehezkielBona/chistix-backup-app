@@ -4,7 +4,8 @@
 import React, { useState, useRef, useEffect } from "react"; // [BARU] + useEffect (countdown)
 import { UploadCloud, AlertCircle, Image as ImageIcon } from "lucide-react";
 import { apiFetch } from "@/lib/api"; // [BARU]
-import type { ApiTransaction } from "@/types/api"; // [BARU]
+// [LAMA] import type { ApiTransaction } from "@/types/api"; // [BARU]
+import { TICKET_LABEL, type ApiTransaction } from "@/types/api"; // [BARU] + TICKET_LABEL
 
 interface UploadPaymentModalProps {
   isOpen: boolean;
@@ -159,7 +160,8 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess, transac
               {/* [LAMA] Presale VIP x 1 */}
               {/* TODO schema v2: tambahkan transaction.ticketType di depan jumlah */}
               <span className="font-semibold text-neutral-800">
-                {transaction?.ticketType ? `${transaction.ticketType} ` : ""}x {transaction?.quantity ?? 0}
+                {/* [LAMA] {transaction?.ticketType ? `${transaction.ticketType} ` : ""}x {transaction?.quantity ?? 0} */}
+                {transaction ? `${TICKET_LABEL[transaction.ticketType]} ` : ""}x {transaction?.quantity ?? 0}
               </span>
             </div>
             <div className="flex justify-between pt-1 font-bold text-neutral-900">
@@ -239,9 +241,8 @@ export default function UploadPaymentModal({ isOpen, onClose, onSuccess, transac
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-100/60 p-8 text-center transition-colors ${
-                isDragging ? "border-amber-500 bg-amber-50/50" : ""
-              }`}
+              className={`flex flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-100/60 p-8 text-center transition-colors ${isDragging ? "border-amber-500 bg-amber-50/50" : ""
+                }`}
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-50 text-red-600 mb-2">
                 <UploadCloud className="h-5 w-5" />

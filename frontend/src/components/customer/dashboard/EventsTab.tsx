@@ -8,7 +8,8 @@ import html2canvas from "html2canvas-pro"; // [BARU] paket yang terdaftar di pac
 import { QRCodeCanvas } from "qrcode.react"; // [BARU] QR dibuat lokal, tanpa layanan luar
 import { apiFetch } from "@/lib/api"; // [BARU]
 import { authClient } from "@/lib/auth-client"; // [BARU] nama customer di tiket
-import type { ApiTransaction, Paged } from "@/types/api"; // [BARU]
+// [LAMA] import type { ApiTransaction, Paged } from "@/types/api"; // [BARU]
+import { TICKET_LABEL, type ApiTransaction, type Paged } from "@/types/api"; // [BARU] + TICKET_LABEL
 
 interface TicketItem {
   id: string;
@@ -28,7 +29,8 @@ function toTicketItem(trx: ApiTransaction, customerName?: string): TicketItem {
   return {
     id: trx.id,
     eventName: trx.event.title,
-    ticketType: trx.ticketType ?? "E-Ticket", // TODO schema v2: trx.ticketType selalu terisi
+    // [LAMA] ticketType: trx.ticketType ?? "E-Ticket", // TODO schema v2: trx.ticketType selalu terisi
+    ticketType: TICKET_LABEL[trx.ticketType] ?? "E-Ticket", // [BARU]
     qty: trx.quantity,
     dateTime: new Date(trx.event.startDate).toLocaleString("id-ID", {
       day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta",

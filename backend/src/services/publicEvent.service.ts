@@ -1,8 +1,11 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, TicketType } from "@prisma/client"; // [BARU] + TicketType
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { formatEventForClient } from "./event.service.js";
 import type { EventQuery } from "../middlewares/eventQuery.middleware.js";
+// [LAMA] import { LOW_STOCK_THRESHOLD, TIER_NAME_TO_TYPE, soldPerTier } from "../utils/ticketTier.js"; // [BARU]
+// [BARU] soldPerTier tidak dipakai di sini (dipakai nanti saat checkout), sisa kursi dihitung dari eventInclude
+import { LOW_STOCK_THRESHOLD, TIER_NAME_TO_TYPE } from "../utils/ticketTier.js";
 
 const ACTIVE = ["WAITING_PAYMENT", "WAITING_CONFIRM", "DONE"] as const;
 
@@ -11,10 +14,68 @@ const eventInclude = {
   organizer: { select: { id: true, name: true, image: true } },
   transactions: {
     where: { status: { in: [...ACTIVE] }, deletedAt: null },
-    // TODO schema v2: tambahkan ticketType: true
-    select: { quantity: true, status: true },
+    // [LAMA] // TODO schema v2: tambahkan ticketType: true
+    // [LAMA] select: { quantity: true, status: true },
+    select: { quantity: true, status: true, ticketType: true }, // [BARU] ticketType sudah ada di schema
   },
 } satisfies Prisma.EventInclude;
+
+// [BARU] ---------- Sisa kursi per kategori ----------
+// formatEventForClient (milik teman) tidak diubah. Hasilnya diproses lagi di sini supaya
+// setiap tier punya ticketType, sold, remaining, lowStock, isAvailable, dan statusLabel yang pasti terisi.
+type ClientTier = { name: string; quota: number; sold?: number; isAvailable?: boolean; statusLabel?: string };
+type IncludedTrx = { quantity: number; ticketType: TicketType };
+
+// Jumlah tiket terjual per kategori, dari transaksi aktif yang sudah ikut terambil lewat eventInclude
+function soldFromTransactions(trxs: IncludedTrx[] = []): Record<TicketType, number> {
+  const sold: Record<TicketType, number> = { VIP: 0, REGULAR: 0, PRESALE: 0 };
+  for (const t of trxs) sold[t.ticketType] += t.quantity;
+  return sold;
+}
+
+function withTierStock<
+  T extends {
+    startDate: Date | string;
+    salesPhase?: string;
+    ticketTiers: ClientTier[];
+    transactions?: IncludedTrx[];
+  },
+>(event: T) {
+  const sold = soldFromTransactions(event.transactions);
+  // penjualan ditutup kalau formatter bilang SALES_CLOSED, atau event sudah dimulai
+  const closed = event.salesPhase === "SALES_CLOSED" || new Date(event.startDate) <= new Date();
+
+  const ticketTiers = event.ticketTiers
+    .filter((t) => t.quota > 0) // kategori dengan kuota 0 berarti tidak dijual
+    .map((t) => {
+      const type = TIER_NAME_TO_TYPE[t.name];
+      const soldCount = type ? sold[type] : (t.sold ?? 0);
+      const remaining = Math.max(0, t.quota - soldCount);
+      const soldOut = remaining === 0;
+      const baseAvailable = closed ? false : (t.isAvailable ?? true);
+      return {
+        ...t,
+        ticketType: type,
+        sold: soldCount,
+        remaining,
+        isAvailable: baseAvailable && !soldOut,
+        statusLabel: soldOut
+          ? "Habis Terjual"
+          : closed
+            ? "Penjualan Ditutup"
+            : (t.statusLabel ?? (baseAvailable ? "Tersedia" : "Belum Dibuka")),
+        lowStock: !soldOut && remaining <= LOW_STOCK_THRESHOLD,
+      };
+    });
+
+  return { ...event, salesPhase: closed ? "SALES_CLOSED" : event.salesPhase, ticketTiers };
+}
+
+// [BARU] satu pintu: format milik teman + sisa kursi per kategori
+// Parameter "event: any" mengikuti formatEventForClient milik teman
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const toClientEvent = (event: any) => withTierStock(formatEventForClient(event));
+// [BARU] ---------- akhir sisa kursi ----------
 
 // Event yang boleh dilihat publik
 function publicWhere(now: Date): Prisma.EventWhereInput {
@@ -95,7 +156,8 @@ export async function listPublicEventsService(q: EventQuery) {
   ]);
 
   return {
-    data: rows.map(formatEventForClient),
+    // [LAMA] data: rows.map(formatEventForClient),
+    data: rows.map(toClientEvent), // [BARU] + sisa kursi per kategori
     total,
     page: q.page,
     limit: q.limit,
@@ -135,9 +197,12 @@ export async function homeEventsService() {
   ]);
 
   return {
-    presale: presale.map(formatEventForClient),
-    upcoming: upcoming.map(formatEventForClient),
-    popular: popular.map(formatEventForClient),
+    // [LAMA] presale: presale.map(formatEventForClient),
+    // [LAMA] upcoming: upcoming.map(formatEventForClient),
+    // [LAMA] popular: popular.map(formatEventForClient),
+    presale: presale.map(toClientEvent), // [BARU]
+    upcoming: upcoming.map(toClientEvent), // [BARU]
+    popular: popular.map(toClientEvent), // [BARU]
   };
 }
 
@@ -156,7 +221,8 @@ export async function publicEventDetailService(eventId: string) {
   });
 
   return {
-    ...formatEventForClient(event),
+    // [LAMA] ...formatEventForClient(event),
+    ...toClientEvent(event), // [BARU] + sisa kursi per kategori
     organizerRating: {
       average: rating._avg.ratingScore ?? 0,
       count: rating._count,

@@ -18,6 +18,18 @@ type FailedStatus = "EXPIRED" | "CANCELED" | "REJECTED";
 // Kursi tidak perlu dikembalikan manual: transaksi gagal tidak dihitung sebagai kursi terjual.
 async function restoreResources(tx: Db, trx: Transaction) {
   if (trx.pointUsed > 0) {
+    // [LAMA]
+    // await tx.user.update({
+    //   where: { id: trx.userId },
+    //   data: { points: { increment: trx.pointUsed } },
+    // });
+
+    // [BARU] kolom points boleh null di schema. Di database NULL + angka = NULL,
+    // jadi kalau masih null, jadikan 0 dulu supaya poin yang dikembalikan tidak hilang
+    await tx.user.updateMany({
+      where: { id: trx.userId, points: null },
+      data: { points: 0 },
+    });
     await tx.user.update({
       where: { id: trx.userId },
       data: { points: { increment: trx.pointUsed } },
@@ -29,7 +41,9 @@ async function restoreResources(tx: Db, trx: Transaction) {
       data: { usedCount: { decrement: 1 } },
     });
   }
-  // TODO schema v2: kembalikan kupon (couponUsedAt = null) kalau trx.couponDiscount > 0
+  // [LAMA] // TODO schema v2: kembalikan kupon (couponUsedAt = null) kalau trx.couponDiscount > 0
+  // [BARU] Kupon referral belum ada kolomnya di schema sekarang (couponDiscount / couponUsedAt).
+  //        Kalau nanti ditambahkan, kembalikan kupon di sini.
 }
 
 // Ubah ke status gagal + rollback dalam SATU SQL transaction.
@@ -60,6 +74,7 @@ async function createETickets(tx: Db, trx: Pick<Transaction, "id" | "quantity">)
 }
 
 // Data yang ikut diambil untuk daftar & detail transaksi
+// (ticketType ikut terkirim otomatis karena include selalu menyertakan semua kolom Transaction)
 const listInclude = {
   event: {
     select: {
@@ -76,6 +91,7 @@ const listInclude = {
 // ================= B. CUSTOMER =================
 
 // TODO schema v2: previewCheckoutService & checkoutService
+// [BARU] catatan: kolom ticketType sudah ada di schema, checkout bisa dikerjakan (langkah berikutnya)
 
 // GET /api/transactions
 export async function getMyTransactionsService(userId: string, q: ListQuery) {
