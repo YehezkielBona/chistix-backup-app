@@ -35,21 +35,24 @@ export function formatEventForClient(event: any) {
 
   // Fungsi penentu ketersediaan & label status tiket yang ramah user
   const getTierInfo = (tierName: "VIP" | "Regular" | "Presale", quota: number, sold: number) => {
+    if(quota <= 0) {
+      return {isAvailable: false, statusLabel: "Ticket Not For Sale"}
+    }
     if (salesInfo.phase === "SALES_CLOSED") {
-      return { isAvailable: false, statusLabel: "Penjualan Ditutup (H-1)" };
+      return { isAvailable: false, statusLabel: "Ticket Saled Closed! (H-1)" };
     }
     if (quota > 0 && sold >= quota) {
-      return { isAvailable: false, statusLabel: "Habis Terjual (Sold Out)" };
+      return { isAvailable: false, statusLabel: " Sold Out" };
     }
 
     if (tierName === "Presale") {
       if (salesInfo.phase === "PRESALE_UPCOMING") {
-        return { isAvailable: false, statusLabel: "Segera Hadir" };
+        return { isAvailable: false, statusLabel: "Coming Soon!" };
       }
       if (salesInfo.phase === "PRESALE_ACTIVE") {
-        return { isAvailable: true, statusLabel: "Tersedia" };
+        return { isAvailable: true, statusLabel: "Available" };
       }
-      return { isAvailable: false, statusLabel: "Periode Presale Selesai" };
+      return { isAvailable: false, statusLabel: "Periode Presale Ended" };
     }
 
     // Untuk VIP & Regular:
@@ -66,9 +69,11 @@ export function formatEventForClient(event: any) {
   const vipInfo = getTierInfo("VIP", event.vipQuota, 0);
   const regInfo = getTierInfo("Regular", event.regularQuota, soldCount);
 
-  // Susun array ticketTiers virtual dari kolom flat agar UI tabel Event tetap jalan
-  const ticketTiers: any[] = [
-    {
+  const ticketTiers: any[] = [];
+  // 1. Hanya masukkan tiket VIP jika Organizer mengaktifkan VIP (vipQuota > 0)
+  if (event.isVip || event.vipQuota > 0) {
+    const vipInfo = getTierInfo("VIP", event.vipQuota, 0);
+    ticketTiers.push({
       id: `${event.id}-vip`,
       name: "VIP",
       price: event.vipPriceNormal,
@@ -77,8 +82,12 @@ export function formatEventForClient(event: any) {
       sold: 0,
       isAvailable: vipInfo.isAvailable,
       statusLabel: vipInfo.statusLabel,
-    },
-    {
+    });
+  }
+  // 2. Hanya masukkan tiket Regular jika Organizer mengaktifkan Regular (regularQuota > 0)
+  if (event.isRegular || event.regularQuota > 0) {
+    const regInfo = getTierInfo("Regular", event.regularQuota, soldCount);
+    ticketTiers.push({
       id: `${event.id}-reg`,
       name: "Regular",
       price: event.regularPriceNormal,
@@ -87,9 +96,9 @@ export function formatEventForClient(event: any) {
       sold: soldCount,
       isAvailable: regInfo.isAvailable,
       statusLabel: regInfo.statusLabel,
-    },
-  ];
-
+    });
+  }
+  // 3. Hanya masukkan tiket Presale jika Organizer mengaktifkan Presale (presaleQuota > 0)
   if (event.isPresale || event.presaleQuota > 0) {
     const preInfo = getTierInfo("Presale", event.presaleQuota, 0);
     ticketTiers.push({
