@@ -8,6 +8,8 @@ import { toNodeHandler } from "better-auth/node";
 import { auth } from "./controllers/auth.controller.js";
 import { organizerEventRouter, publicEventRouter } from "./routes/event.routes.js";
 import { organizerVoucherRouter, publicVoucherRouter } from "./routes/voucher.routes.js";
+import { organizerTransactionRouter } from "./routes/transaction.routes.js";
+import { organizerAttendeeRouter } from "./routes/attendee.routes.js";
 import { regionRouter, uploadRouter } from "./routes/region.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { initCronJobs } from "./services/cron.service.js";
@@ -53,6 +55,8 @@ app.use("/api/organizer/events", organizerEventRouter);
 app.use("/api/events", publicEventRouter);
 app.use("/api/organizer/vouchers", organizerVoucherRouter);
 app.use("/api/vouchers", publicVoucherRouter);
+app.use("/api/organizer/transactions", organizerTransactionRouter);
+app.use("/api/organizer/attendees", organizerAttendeeRouter);
 app.use("/api/regions", regionRouter);
 app.use("/api/upload", uploadRouter);
 
@@ -66,13 +70,13 @@ app.use((_req, res) => {
 
 // 7. Global Error Handler
 app.use(errorHandler);
-initCronJobs()
+initCronJobs();
 
 // Jalankan server jika tidak sedang di-import sebagai Serverless Function Vercel
 if (process.env.VERCEL !== "1") {
   const PORT = Number(process.env.PORT) || 8000;
   app.listen(PORT, () => {
-    console.log(` Chistix Express Backend berjalan di http://localhost:${PORT}`);
+    console.log(`Chistix Express Backend berjalan di http://localhost:${PORT}`);
   });
 }
 
