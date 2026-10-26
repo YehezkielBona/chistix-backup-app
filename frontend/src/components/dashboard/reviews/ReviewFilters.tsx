@@ -1,15 +1,21 @@
 import React from "react";
 import { ChevronDownIcon, StarIcon } from "@heroicons/react/24/outline";
 
+export interface EventFilterOption {
+  id: string
+  title: string
+}
+
 interface ReviewFiltersProps {
   selectedEvent: string;
   onEventChange: (event: string) => void;
-  eventList: string[];
+  eventList: EventFilterOption[]
   activeStarFilter: number | null;
   onStarFilterChange: (star: number | null) => void;
 }
 
-export default function ReviewFilters({ selectedEvent, onEventChange, eventList, activeStarFilter, onStarFilterChange }: ReviewFiltersProps) {
+export default function ReviewFilters({ 
+  selectedEvent, onEventChange, eventList, activeStarFilter, onStarFilterChange }: ReviewFiltersProps) {
   const starTabs = [5, 4, 3, 2, 1];
 
   return (
@@ -22,8 +28,8 @@ export default function ReviewFilters({ selectedEvent, onEventChange, eventList,
         >
           <option value="ALL">All Events</option>
           {eventList.map((evt) => (
-            <option key={evt} value={evt}>
-              {evt}
+            <option key={evt.id} value={evt.id}>
+              {evt.title}
             </option>
           ))}
         </select>
