@@ -31,20 +31,18 @@ export const auth = betterAuth({
       // Sesuai enum Role di schema.prisma: CUSTOMER | ORGANIZER
       role: { type: "string", required: false, defaultValue: "CUSTOMER" },
       points: { type: "number", required: false, defaultValue: 0 },
-      // [BARU] dibuat sistem. input: false = user tidak bisa mengisi atau mengubahnya
+      // BARU: dibuat sistem. input: false = user tidak bisa mengisi atau mengubahnya
       referralCode: { type: "string", required: false, input: false },
-      // TODO schema v2: referredBy: { type: "string", required: false, input: true },
     },
   },
 
-  // [BARU] Hook: dijalankan otomatis saat user baru dibuat (daftar email maupun Google)
+  // BARU Hook: dijalankan otomatis saat user baru dibuat (daftar email maupun Google)
   databaseHooks: {
     user: {
       create: {
         before: async (user) => ({
           data: { ...user, referralCode: await generateReferralCode() },
         }),
-        // TODO schema v2: after -> applyReferralReward(user.id, user.referredBy)
       },
     },
   },

@@ -70,12 +70,8 @@ export async function requireCustomer(req: Request, res: Response, next: NextFun
   }
 }
 
-// ============================================================
 // BARU: requireRole
-// Beda dengan 2 fungsi di atas: request TANPA login langsung ditolak (401).
-// Dipakai di route transaksi, review, dan overview customer.
-// Contoh: router.use(requireRole("CUSTOMER"))
-// ============================================================
+
 type AppRole = "CUSTOMER" | "ORGANIZER";
 
 export function requireRole(...roles: AppRole[]) {

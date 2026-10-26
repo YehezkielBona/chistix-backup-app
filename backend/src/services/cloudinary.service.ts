@@ -59,7 +59,7 @@ export function createCloudinaryUploadSignature(customFolder?: string) {
 }
 
 
-// ================= B. SERVER UPLOAD (BARU) =================
+// BARU: SERVER UPLOAD
 
 // Upload file dari RAM (buffer hasil Multer memoryStorage) ke Cloudinary
 export function uploadImageBuffer(buffer: Buffer, folder: string): Promise<{ url: string; publicId: string }> {
