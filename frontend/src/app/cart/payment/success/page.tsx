@@ -14,7 +14,9 @@ function formatEventDate(dateString?: string) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(d).replace(".", ":");
+  })
+    .format(d)
+    .replace(".", ":");
 }
 
 function PaymentSuccessContent() {
@@ -22,13 +24,13 @@ function PaymentSuccessContent() {
   const searchParams = useSearchParams();
 
   const eventIdParam = searchParams.get("eventId");
+  const transactionIdParam = searchParams.get("transactionId");
   const amountParam = searchParams.get("amount");
   const qtyParam = searchParams.get("qty");
   const variantParam = searchParams.get("variant");
   const customerParam = searchParams.get("customer") || "mutiara";
 
-  const selectedEvent =
-    DUMMY_EVENTS.find((e) => e.id.toString() === eventIdParam) || DUMMY_EVENTS[0];
+  const selectedEvent = DUMMY_EVENTS.find((e) => e.id.toString() === eventIdParam) || DUMMY_EVENTS[0];
 
   const totalAmount = amountParam ? parseInt(amountParam, 10) : selectedEvent.price;
   const ticketQty = qtyParam ? parseInt(qtyParam, 10) : 1;
@@ -41,12 +43,7 @@ function PaymentSuccessContent() {
       <div className="w-full max-w-md bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-200">
         <div className="flex justify-center mb-3">
           <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center">
-            <svg
-              className="w-8 h-8 text-white stroke-current"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="3"
-            >
+            <svg className="w-8 h-8 text-white stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="3">
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -54,17 +51,20 @@ function PaymentSuccessContent() {
 
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-slate-900">Pembayaran Berhasil!</h1>
-          <p className="text-xs text-amber-600 font-medium mt-1">
-            Pesananmu sedang dikonfirmasi oleh organizer (maks. 2 jam).
-          </p>
+          <p className="text-xs text-amber-600 font-medium mt-1">Pesananmu sedang dikonfirmasi oleh organizer (maks. 2 jam).</p>
         </div>
 
         <div className="space-y-3 text-xs font-medium border-t border-slate-100 pt-4 mb-2">
+
+            {transactionIdParam && (
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <span className="text-slate-400">Transaction ID</span>
+                <span className="font-mono font-bold text-slate-800 text-[11px]">{transactionIdParam}</span>
+              </div>
+            )}
           <div className="flex justify-between items-start">
             <span className="text-slate-400">Events</span>
-            <span className="font-bold text-right text-slate-900 max-w-[200px]">
-              {selectedEvent.title}
-            </span>
+            <span className="font-bold text-right text-slate-900 max-w-[200px]">{selectedEvent.title}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Customer</span>
@@ -78,37 +78,25 @@ function PaymentSuccessContent() {
           </div>
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Date & Time</span>
-            <span className="font-bold text-slate-900">
-              {formatEventDate(selectedEvent.date)}
-            </span>
+            <span className="font-bold text-slate-900">{formatEventDate(selectedEvent.date)}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-slate-400">Location</span>
-            <span className="font-bold text-slate-900">
-              {selectedEvent.location || "Jakarta, Indonesia"}
-            </span>
+            <span className="font-bold text-slate-900">{selectedEvent.location || "Jakarta, Indonesia"}</span>
           </div>
           <div className="flex justify-between items-center pt-2 border-t border-slate-100">
             <span className="text-slate-400">Total Amount</span>
-            <span className="font-bold text-emerald-600 text-sm">
-              {formatRupiah(totalAmount)}
-            </span>
+            <span className="font-bold text-emerald-600 text-sm">{formatRupiah(totalAmount)}</span>
           </div>
         </div>
       </div>
 
       <div className="w-full max-w-md mt-4 space-y-2">
-        <button
-          onClick={() => router.push("/customer/dashboard?tab=transactions")}
-          className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-2xl transition cursor-pointer shadow-xs text-center block"
-        >
+        <button onClick={() => router.push("/customer/dashboard?tab=transactions")} className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-2xl transition cursor-pointer shadow-xs text-center block">
           Cek Status Transaksi
         </button>
 
-        <button
-          onClick={() => router.push("/")}
-          className="w-full py-3.5 bg-slate-200/70 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition cursor-pointer text-center block"
-        >
+        <button onClick={() => router.push("/")} className="w-full py-3.5 bg-slate-200/70 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition cursor-pointer text-center block">
           Kembali ke Beranda
         </button>
       </div>
@@ -118,13 +106,7 @@ function PaymentSuccessContent() {
 
 export default function PaymentSuccessPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center text-xs text-slate-400">
-          Loading...
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-xs text-slate-400">Loading...</div>}>
       <PaymentSuccessContent />
     </Suspense>
   );

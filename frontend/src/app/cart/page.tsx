@@ -17,35 +17,51 @@ function CartContent() {
   const queryQty = searchParams.get("qty");
   const queryVariant = searchParams.get("variant");
 
-  // 2. Ambil data event asli berdasarkan eventId dari URL
-  const selectedEvent =
-    DUMMY_EVENTS.find((e) => e.id.toString() === queryEventId) || DUMMY_EVENTS[0];
+   // 2. State Data Event Asli dari Backend
+  const [eventData, setEventData] = useState<any>(null);
+  const [isLoadingEvent, setIsLoadingEvent] = useState<boolean>(true);
 
   // 3. State Jumlah Tiket
   const [ticketQty, setTicketQty] = useState<number>(() => {
     if (queryQty && Number(queryQty) > 0) return Number(queryQty);
-    if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("chistix_ticket_qty");
-      if (saved && Number(saved) > 0) return Number(saved);
-    }
     return 1;
   });
 
-  // 4. State Varian Tiket
+  // 4. State Varian Tiket (VIP, Regular, atau Presale)
   const [ticketVariant, setTicketVariant] = useState<string>(() => {
-    if (queryVariant) return queryVariant;
-    if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("chistix_ticket_variant");
-      if (saved) return saved;
-    }
-    return "Presale";
+    if (queryVariant) return queryVariant.toUpperCase();
+    return "REGULAR";
   });
 
-  // 5. State Terpisah: Coupon Discount & Point Balance
-  const [couponDiscount, setCouponDiscount] = useState<number>(5000); // Default potongan kupon otomatis (< 5000)
-  const [pointBalance] = useState<number>(150);
+  // 5. State Diskon Voucher & Poin
+  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  const [appliedVoucherCode, setAppliedVoucherCode] = useState<string>("");
+  const [pointBalance, setPointBalance] = useState<number>(0);
   const [isPointsClaimed, setIsPointsClaimed] = useState<boolean>(false);
 
+  // 6. Tarik Data Event Riil dari Backend Express
+  useEffect(() => {
+    const fetchEventDetail = async () => {
+      try {
+        setIsLoadingEvent(true);
+        // Jika ada queryEventId, pakai ID itu, jika tidak ada, ambil event pertama yang aktif
+        const url = queryEventId ? `/api/events/${queryEventId}` : "/api/events";
+        const res = await fetch(url);
+        const json = await res.json();
+
+        if (json.success && json.data) {
+          const fetched = Array.isArray(json.data) ? json.data[0] : json.data;
+          setEventData(fetched);
+        }
+      } catch (err) {
+        console.error("Gagal mengambil event dari backend:", err);
+      } finally {
+        setIsLoadingEvent(false);
+      }
+    };
+
+    fetchEventDetail();
+  }, [queryEventId]);
   // Sync state dengan URL Query Parameter saat URL berubah
   useEffect(() => {
     const qty = searchParams.get("qty");
@@ -55,19 +71,19 @@ function CartContent() {
     if (variant) setTicketVariant(variant);
   }, [searchParams]);
 
-  // 6. Penentuan Harga Berdasarkan Varian & Harga Dasar Event Dinamis
-  const getPriceByVariant = (variantName: string, baseEventPrice: number) => {
-    switch (variantName) {
-      case "VIP":
-        return baseEventPrice * 2;
-      case "Presale":
-      case "Regular":
-      default:
-        return baseEventPrice;
+  // Hitung Harga Satuan Tiket Sesuai Kategori dari Database
+  const getPriceByTier = () => {
+    if (!eventData) return 0;
+    const variantUpper = ticketVariant.toUpperCase();
+    if (variantUpper === "VIP") {
+      return eventData.vipPriceFinal || eventData.vipPriceNormal || 0;
     }
+    if (variantUpper === "PRESALE") {
+      return eventData.presalePriceFinal || eventData.presalePriceNormal || 0;
+    }
+    return eventData.regularPriceFinal || eventData.regularPriceNormal || 0;
   };
-
-  const basePricePerTicket = getPriceByVariant(ticketVariant, selectedEvent.price);
+  const basePricePerTicket = getPriceByTier();
   const rawSubtotal = basePricePerTicket * ticketQty;
   const taxFee = Math.round(rawSubtotal * 0.11); // PPN 11%
 
@@ -93,18 +109,18 @@ function CartContent() {
 
     if (json.success) {
       const { discountType, discount } = json.data;
+      setAppliedVoucherCode(code); // <-- Simpan kode voucher agar bisa dikirim saat checkout
       if (discountType === "PERCENTAGE") {
-        // Diskon persen: dihitung dari subtotal
         setCouponDiscount(Math.round(rawSubtotal * (discount / 100)));
       } else {
-        // Diskon nominal Rupiah (flat)
         setCouponDiscount(discount);
       }
       alert(`Voucher berhasil! Potongan: ${discountType === "PERCENTAGE" ? discount + "%" : "Rp " + discount.toLocaleString("id-ID")}`);
     } else {
-      alert(json.message); // Pesan error dari server (kode salah / expired / kuota habis)
+      setAppliedVoucherCode("");
+      alert(json.message);
     }
-  };
+  }
 
   return (
     <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 space-y-6">
@@ -119,8 +135,8 @@ function CartContent() {
       {/* 1. Event Ticket Section */}
       <section>
         <CartItemTable
-          eventTitle={selectedEvent.title}
-          organizerName={selectedEvent.organizer || "Nusantara Orchestra Productions"}
+          eventTitle={eventData?.title || "Memuat Event..."}
+          organizerName={eventData?.organizer?.name || "Nusantara Orchestra Productions"}
           quantity={ticketQty}
           setQuantity={(newQty) => {
             setTicketQty(newQty);
@@ -197,7 +213,14 @@ function CartContent() {
 
       {/* 5. Payment Method & Checkout */}
       <section className="pt-2">
-        <PaymentMethod totalAmount={totalAmount} quantity={ticketQty} />
+        <PaymentMethod
+          totalAmount={totalAmount}
+          quantity={ticketQty}
+          eventId={eventData?.id || queryEventId || ""}
+          ticketVariant={ticketVariant}
+          voucherCode={appliedVoucherCode}
+          pointsUsed={pointDiscountValue}
+        />
       </section>
     </div>
   );

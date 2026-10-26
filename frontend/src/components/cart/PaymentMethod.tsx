@@ -6,9 +6,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 interface PaymentMethodProps {
   totalAmount: number;
   quantity?: number;
+  eventId: string;
+  ticketVariant: string;
+  voucherCode?: string;
+  pointsUsed?: number;
 }
 
-function PaymentMethodContent({ totalAmount, quantity = 1 }: PaymentMethodProps) {
+function PaymentMethodContent({ 
+  totalAmount,
+  quantity = 1,
+  eventId,
+  ticketVariant,
+  voucherCode,
+  pointsUsed = 0, }: PaymentMethodProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -21,23 +31,55 @@ function PaymentMethodContent({ totalAmount, quantity = 1 }: PaymentMethodProps)
     { id: "ShopeePay", label: "ShopeePay", route: "/cart/payment/ewallet/shopeepay", textColor: "text-orange-600" },
   ];
 
-  const handleCheckout = () => {
-    const eventId = searchParams.get("eventId") || "1";
-    const variant = searchParams.get("variant") || "Presale";
+   const [isSubmitting, setIsSubmitting] = useState(false);
 
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("chistix_total_amount", totalAmount.toString());
-      sessionStorage.setItem("chistix_ticket_qty", quantity.toString());
+  const handleCheckout = async () => {
+    if (!eventId) {
+      alert("Event ID tidak valid!");
+      return;
     }
 
-    const currentMethodObj = methods.find((m) => m.id === selectedMethod);
-    const targetRoute = currentMethodObj ? currentMethodObj.route : "/cart/payment/ewallet/dana";
+    try {
+      setIsSubmitting(true);
 
-    router.push(
-      `${targetRoute}?eventId=${eventId}&amount=${totalAmount}&qty=${quantity}&variant=${encodeURIComponent(
-        variant
-      )}`
-    );
+      // 1. Kirim transaksi ke backend Express kita
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId,
+          ticketType: ticketVariant.toUpperCase(),
+          quantity,
+          voucherCode: voucherCode || undefined,
+          pointsUsed,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Gagal membuat transaksi");
+      }
+
+      // 2. Dapatkan ID Transaksi resmi dari database Neon!
+      const newTransactionId = json.data.id;
+
+      // 3. Tentukan halaman tujuan pembayaran
+      const currentMethodObj = methods.find((m) => m.id === selectedMethod);
+      const targetRoute = currentMethodObj ? currentMethodObj.route : "/cart/payment";
+
+      // 4. Redirect ke halaman pembayaran membawa ID Transaksi resmi
+      router.push(
+        `${targetRoute}?transactionId=${newTransactionId}&eventId=${eventId}&amount=${totalAmount}&qty=${quantity}&variant=${encodeURIComponent(
+          ticketVariant
+        )}`
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert("Terjadi kesalahan: " + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -72,7 +114,7 @@ function PaymentMethodContent({ totalAmount, quantity = 1 }: PaymentMethodProps)
         <button
           type="button"
           onClick={handleCheckout}
-          disabled={totalAmount <= 0}
+          disabled={totalAmount <= 0 || isSubmitting}
           className="px-10 py-2.5 bg-[#FF8A00] hover:bg-[#E07B00] active:bg-amber-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-full transition-all shadow-xs cursor-pointer"
         >
           Check Out
