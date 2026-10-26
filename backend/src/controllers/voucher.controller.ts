@@ -39,7 +39,7 @@ export async function getVoucherDetailController(voucherId: string) {
 }
 
 // 3. POST /api/organizer/vouchers
-export async function createVoucherController(inputData: unknown) {
+export async function createVoucherController(inputData: unknown, organizerId?: string) {
   const validation = createVoucherSchema.safeParse(inputData);
   if (!validation.success) {
     const firstMsg = validation.error.issues[0]?.message || "Validasi gagal";
@@ -51,7 +51,7 @@ export async function createVoucherController(inputData: unknown) {
     };
   }
 
-  const outcome = await createVoucherService(validation.data);
+  const outcome = await createVoucherService(validation.data, organizerId);
 
   if ("duplicate" in outcome) {
     return {

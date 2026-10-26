@@ -61,7 +61,7 @@ export async function getVoucherByIdService(voucherId: string) {
 }
 
 // 3. Buat voucher baru (1 event atau "ALL" untuk seluruh event DRAFT & UPCOMING)
-export async function createVoucherService(data: CreateVoucherInput) {
+export async function createVoucherService(data: CreateVoucherInput, organizerId?: string) {
   const { code, eventId, discountType, discount, validStart, validEnd, maxUsage } = data;
 
   // Cek apakah kode sudah pernah dipakai
@@ -72,64 +72,33 @@ export async function createVoucherService(data: CreateVoucherInput) {
 
   // Jika organizer memilih "All Events"
   if (eventId === "ALL") {
-    const allEvents = await prisma.event.findMany({
-      where: { deletedAt: null },
+    // Cukup buat 1 baris voucher saja dengan eventId bernilai null!
+    const voucher = await prisma.voucher.create({
+      data: {
+        code, // Kodenya murni "MASBAHLIL" tanpa tambahan _0 atau _1!
+        organizerId: organizerId || null,
+        eventId: null, // Kosongkan eventId karena berlaku untuk semua event
+        discountType,
+        discount,
+        validStart: new Date(validStart),
+        validEnd: new Date(validEnd),
+        maxUsage,
+      },
     });
-
-    // Saring event yang status dinamisnya DRAFT atau UPCOMING
-    const eligibleEvents = allEvents.filter((evt) => {
-      const st = calculateEventStatus(
-        evt.eventStatus,
-        new Date(evt.startDate),
-        new Date(evt.endDate),
-      );
-      return st !== "ENDED";
-    });
-
-    if (eligibleEvents.length === 0) {
-      return { noEligibleEvents: true as const };
-    }
-
-    const created = await prisma.$transaction(
-      eligibleEvents.map((evt, index) =>
-        prisma.voucher.create({
-          data: {
-            code: `${code}_${index}`,
-            eventId: evt.id,
-            discountType,
-            discount,
-            validStart: new Date(validStart),
-            validEnd: new Date(validEnd),
-            maxUsage,
-          },
-        }),
-      ),
-    );
-
-    return { createdAll: true as const, data: created };
+    return { createdAll: true as const, data: voucher };
   }
-
+  // JIKA VOUCHER KHUSUS 1 EVENT TERTENTU:
   const targetEvent = await prisma.event.findUnique({
-    where: { id:eventId},
-  })
-
-  if(!targetEvent || targetEvent.deletedAt) {
-    return {eventNotFound: true as const}
+    where: { id: eventId },
+  });
+  if (!targetEvent || targetEvent.deletedAt) {
+    return { eventNotFound: true as const };
   }
-
-  const eventEnd = new Date(targetEvent.endDate)
-  if(new Date(validStart) >= eventEnd) {
-    throw new Error ("Voucher sudah tidak dapat digunakan karena tanggal mulai voucher sudah melewati tanggal event berakhir")
-  }
-  if(new Date(validEnd) > eventEnd) {
-    throw new Error("Tanggal kadaluarsa voucher tidak boleh melebihi tanggal event berakhir")
-  }
-
-  // Untuk 1 event spesifik
   const voucher = await prisma.voucher.create({
     data: {
       code,
-      eventId,
+      organizerId: targetEvent.organizerId,
+      eventId: targetEvent.id,
       discountType,
       discount,
       validStart: new Date(validStart),
@@ -137,7 +106,6 @@ export async function createVoucherService(data: CreateVoucherInput) {
       maxUsage,
     },
   });
-
   return { createdOne: true as const, data: voucher };
 }
 
@@ -182,29 +150,38 @@ export async function validateAndUseVoucherService(rawCode: string, eventId: str
   const now = new Date();
   const normalizedCode = rawCode.trim().toUpperCase();
 
-  // Cari voucher dengan kode persis ATAU kode "All Event" (prefix CODE_0, CODE_1) untuk event ini
-  let voucher = await prisma.voucher.findFirst({
+  // Cari voucher dengan kode
+  const voucher = await prisma.voucher.findFirst({
     where: {
+      code: normalizedCode,
       deletedAt: null,
-      OR: [
-        { code: normalizedCode },
-        {
-          eventId,
-          code: { startsWith: `${normalizedCode}_` },
-        },
-      ],
     },
+    include: {
+      event: true
+    }
   });
-
-  // Jika eventId di URL cart masih memakai ID pendek ("1", "2") dari data dummy,
-  // tetap izinkan pencocokan berdasarkan kode langsung agar mudah dites
   if (!voucher) {
     return { error: "Kode voucher tidak ditemukan" };
   }
+  
+  const currentEvent = await prisma.event.findUnique({
+    where: {id: eventId}
+  })
+  if(!currentEvent) {
+    return {error: "Event tidak valid!"}
+  }
 
-  // Jika eventId berupa UUID valid dan berbeda dengan event milik voucher
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(eventId);
-  if (isUuid && voucher.eventId !== eventId) {
+  //  LOGIKA PENCOCOKAN EVENT:
+  // - Kasus A: Voucher khusus 1 event -> eventId harus sama persis
+  // - Kasus B: Voucher All Events (eventId == null) -> organizerId harus sama dengan pembuat event ini
+
+  const isSpecificEventMatch = voucher.eventId === currentEvent.id;
+  const isGlobalOrganizerMatch =
+    voucher.eventId === null &&
+    voucher.organizerId &&
+    voucher.organizerId === currentEvent.organizerId;
+
+  if (!isSpecificEventMatch && !isGlobalOrganizerMatch) {
     return { error: "Voucher ini tidak berlaku untuk event ini" };
   }
 
