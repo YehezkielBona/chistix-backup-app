@@ -8,7 +8,7 @@ import { toNodeHandler } from "better-auth/node";
 import { auth } from "./controllers/auth.controller.js";
 import { organizerEventRouter, publicEventRouter } from "./routes/event.routes.js";
 import { organizerVoucherRouter, publicVoucherRouter } from "./routes/voucher.routes.js";
-import { organizerTransactionRouter } from "./routes/transaction.routes.js";
+import { organizerTransactionRouter, customerTransactionRouter } from "./routes/transaction.routes.js";
 import { organizerAttendeeRouter } from "./routes/attendee.routes.js";
 import { organizerReviewRouter } from "./routes/review.routes.js";
 import { regionRouter, uploadRouter } from "./routes/region.routes.js";
@@ -57,6 +57,7 @@ app.use("/api/events", publicEventRouter);
 app.use("/api/organizer/vouchers", organizerVoucherRouter);
 app.use("/api/vouchers", publicVoucherRouter);
 app.use("/api/organizer/transactions", organizerTransactionRouter);
+app.use("/api/transactions", customerTransactionRouter)
 app.use("/api/organizer/attendees", organizerAttendeeRouter);
 app.use("/api/organizer/reviews", organizerReviewRouter)
 app.use("/api/regions", regionRouter);

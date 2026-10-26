@@ -72,7 +72,7 @@ export const initCronJobs = () => {
                         data: {status: "EXPIRED"}
                     })
 
-                    const quotaField = trx.ticketType === "VIP" ? "vipQupta" :
+                    const quotaField = trx.ticketType === "VIP" ? "vipQuota" :
                     trx.ticketType === "PRESALE" ? "presaleQuota" : "regularQuota"
 
                     await tx.event.update({

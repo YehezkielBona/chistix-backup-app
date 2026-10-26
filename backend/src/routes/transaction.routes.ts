@@ -4,6 +4,8 @@ import {
   getOrganizerTransactionsController,
   acceptTransactionController,
   rejectTransactionController,
+  createTransactionController,
+  getTransactionByIdController
 } from "../controllers/transaction.controller.js";
 import { sendResult } from "../lib/sendResult.js";
 
@@ -36,3 +38,23 @@ organizerTransactionRouter.put("/:id/accept", handleAccept);
 
 organizerTransactionRouter.patch("/:id/reject", handleReject);
 organizerTransactionRouter.put("/:id/reject", handleReject);
+
+// router transaksi untuk customer publik/checkout
+
+export const customerTransactionRouter = Router ()
+
+customerTransactionRouter.post("/", async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id
+  const result = await createTransactionController({
+    ...req.body,
+    userId: userId || req.body.userId,
+  })
+  sendResult(res, result)
+})
+
+// Endpoint: GET /api/transactions/:id (Ambil detail pembayaran & batas waktu)
+customerTransactionRouter.get("/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await getTransactionByIdController(String(id));
+  sendResult(res, result);
+});
